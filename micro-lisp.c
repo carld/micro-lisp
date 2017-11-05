@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define debug(x) printf("DEBUG: "); print_obj(x,1); puts("");
 typedef struct List {
   struct List * next;
   void * data;
@@ -66,7 +67,6 @@ void print_obj(List *ob, int head_of_list) {
     }
   }
 }
-
 List *fcons(List *a) {
   return cons(car(a), cons(car(cdr(a)), 0));
 }
@@ -81,6 +81,12 @@ List *feq(List *a) {
 }
 List *fpair(List *a) {
   return is_pair(car(a)) ? cons("quote", cons("t", 0)) : 0;
+}
+List *fsym(List *a) {
+  return !is_pair(car(a)) ? cons("quote", cons("t", 0)) : 0;
+}
+List *fnull(List *a) {
+  return car(a) == 0 ? cons("quote", cons("t", 0)) : 0;
 }
 List * eval(List *exp, List *env) {
   if (!is_pair(exp) ) {
@@ -99,23 +105,28 @@ List * eval(List *exp, List *env) {
         } else {
           return eval (car (cdr (cdr (cdr (exp)))), env);
         }
-      } else { /* primitive operation */
+      } else if (strcmp((char*)car(exp), "lambda")==0) {
+        return exp; /* todo create a closure, capture free vars todo */
+      } else { /* apply */
         List *primop = eval (car (exp), env);
-        if ( primop ) {
+        if (is_pair(primop)) { /* user defined lambda */
+          return eval(cons (primop, cdr (exp)), env);
+        } else if (primop) { /* built-in primitive */
           List *head = 0, **args = &head;
-          for ( exp = cdr(exp) ; exp != 0 ; exp = cdr(exp) ) {
-            *args = cons(eval(car(exp), env), 0);
+          for ( exp = cdr (exp) ; exp != 0 ; exp = cdr (exp) ) {
+            *args = cons( eval( car (exp), env), 0);
             args = &( (List*)untag(*args) )->next;
           }
           return ((List* (*) (List*)) primop) ( head );
-        } else {
-          return 0;
         }
       }
-    } else { /* should be a lambda */
+    } else { /* should be a lambda, bind names into env and eval body */
       if (strcmp((char*) (car(car(exp))), "lambda")==0) {
-        List *newenvsym = cons(car(car(cdr(car(exp)))), cons(eval(car(cdr(exp)), env), 0));
-        return eval (car(cdr(cdr(car(exp)))), cons(newenvsym, env));
+        List *extenv = env, *names = car (cdr ( car (exp ) )), *vars = cdr (exp);
+        for (  ; names ; names = cdr (names), vars = cdr (vars) ) {
+          extenv = cons (cons (car (names), cons (eval (car (vars), env), 0)), extenv);
+        }
+        return eval(car (cdr (cdr (car (exp)))), extenv);
       }
     }
   }
@@ -125,9 +136,11 @@ int main(int argc, char *argv[]) {
   List *env = cons (cons("car", cons((void *)fcar, 0)), cons(
                     cons("cdr", cons((void *)fcdr, 0)), cons(
                     cons("cons", cons((void *)fcons, 0)), cons(
-                    cons("eq", cons((void *)feq, 0)), cons(
+                    cons("eq?", cons((void *)feq, 0)), cons(
                     cons("pair?", cons((void *)fpair, 0)), cons(
-                    cons("null", cons(0,0)), 0))))));
+                    cons("symbol?", cons((void *)fpair, 0)), cons(
+                    cons("null?", cons((void *)fnull, 0)), cons(
+                    cons("null", cons(0,0)), 0))))))));
   look=getchar();
   gettoken();
   print_obj( eval(getobj(), env), 1 );
