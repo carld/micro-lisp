@@ -88,6 +88,16 @@ List *fsym(List *a) {
 List *fnull(List *a) {
   return car(a) == 0 ? cons("quote", cons("t", 0)) : 0;
 }
+List *freadobj(List *a) {
+  look=getchar();
+  gettoken();
+  return getobj();
+}
+List *fwriteobj(List *a) {
+  print_obj(car(a), 1);
+  puts("");
+  return 0;
+}
 List * eval(List *exp, List *env) {
   if (!is_pair(exp) ) {
     for ( ; env != 0; env = cdr (env) ) {
@@ -130,7 +140,8 @@ List * eval(List *exp, List *env) {
       }
     }
   }
-  return (List *)"cannot evaluate expression";
+  puts("cannot evaluate expression");
+  return (void *)0;
 }
 int main(int argc, char *argv[]) {
   List *env = cons (cons("car", cons((void *)fcar, 0)), cons(
@@ -138,9 +149,11 @@ int main(int argc, char *argv[]) {
                     cons("cons", cons((void *)fcons, 0)), cons(
                     cons("eq?", cons((void *)feq, 0)), cons(
                     cons("pair?", cons((void *)fpair, 0)), cons(
-                    cons("symbol?", cons((void *)fpair, 0)), cons(
+                    cons("symbol?", cons((void *)fsym, 0)), cons(
                     cons("null?", cons((void *)fnull, 0)), cons(
-                    cons("null", cons(0,0)), 0))))))));
+                    cons("read", cons((void *)freadobj, 0)), cons(
+                    cons("write", cons((void *)fwriteobj, 0)), cons(
+                    cons("null", cons(0,0)), 0))))))))));
   look=getchar();
   gettoken();
   print_obj( eval(getobj(), env), 1 );
