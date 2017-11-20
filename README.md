@@ -1,7 +1,6 @@
 ### Micro Lisp
 
-Objective: implement a small Lisp/Scheme language in as few lines of C as
-possible.
+Objective: implement a small Lisp/Scheme language in as little C code as possible.
 
 The interpreter supports `lambda`, e.g.
 
@@ -10,7 +9,9 @@ The interpreter supports `lambda`, e.g.
   (7 1)
 ```
 
-And the special forms `if` and `quote`
+Note that `lambda` does not capture free variables (variables that are not passed as arguments and refer to an outer scope). Free variables will resolve to their assigned values in the environment when the body of the lambda is evaluated.
+
+The special forms `if` and `quote` behave in a typical way:
 
 ```lisp
   (if (quote t) (quote 7) (quote 0))
@@ -19,15 +20,29 @@ And the special forms `if` and `quote`
 
 The only types are symbols and pairs.
 
-Non-quoted tokens are looked up in the environment. If they have no associated
-value the result is `null`. Because there is no numeric type a number for
-example 7 will be treated as any other token and looked up in the environment.
+Non-quoted symbols are looked up in the environment. If they have no associated
+value the result is `null` in fact zero. Because there is no numeric type a number for
+example 7 will be treated as any other symbol and looked up in the environment.
 Note in the examples above numbers are quoted to prevent that.
 
 The built-in primitives in the environment are: `car`, `cdr`, `cons`, `eq?`,
 `pair?`, `read`, `write`.
 
-Also provided is `apply` which takes a function and a list.
+Also provided is `apply` which takes a function and a single list argument:
+
+```lisp
+  (apply write (quote ((hello world))))
+  (hello world)
+  (quote t)
+```
+
+Lists can be built up by `cons`ing:
+
+```lisp
+  (apply write (cons (cons (quote hello) (cons (quote world) null)) null))
+  (hello world)
+  (quote t)
+```
 
 ### Read Eval Print Loop
 
@@ -39,8 +54,12 @@ A REPL is implemented in micro-lisp itself. To try it out in a terminal:
 
 To exit, press 'control c' to terminate the process.
 
+Note the `-` argument to `cat` to pipe stdin through, otherwise micro-lisp will receive end-of-file.
+
+The source code for the REPL is in `repl.lisp`. It implements `eval` and provides an environment which resolves symbols to the primitive functions in the underlying micro-lisp interpreter.
 
 ### Debugging with GDB
 
+A `.gdbinit` file sets the target, breakpoints and runs the executable. Simply run `gdb`.
 
 
