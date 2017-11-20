@@ -64,6 +64,7 @@ check-ok "((lambda (x y) (cons y (cons x null))) (quote 67) (quote 89))" "(89 67
 check-prog-ok assoc.lisp "lisp"
 check-prog-ok apply.lisp "(fn 1 2 3 4)"
 check-prog-ok apply2.lisp "(fn (1 2 3 4))"
+check-prog-ok reverse.lisp "(9 8 7 6 5 4 3 2 1)"
 
 check-repl-ok "hello" "carl"
 check-repl-ok "(quote (write hello))" "(write hello)"
