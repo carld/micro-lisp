@@ -58,7 +58,7 @@ check-ok "(write (quote (cons (quote 1) (quote 2))))" "(cons (quote 1) (quote 2)
 check-ok "(cons (quote 1) (cons (quote 2) (cons (quote 3) (cons (quote 4) null))))" "(1 2 3 4)"
 check-ok "(quote (1 2 3 4))" "(1 2 3 4)"
 check-ok "(cons (quote 1) (cons (quote 2) null))" "(1 2)"
-check-ok "(apply write (cons (quote (hello world)) null))" "(hello world)"
+check-ok "(write (cons (quote (hello world)) null))" "((hello world))"
 check-ok "((lambda (x y) (cons y (cons x null))) (quote 67) (quote 89))" "(89 67)"
 
 check-prog-ok assoc.lisp "lisp"
@@ -68,6 +68,8 @@ check-prog-ok reverse.lisp "(9 8 7 6 5 4 3 2 1)"
 
 check-repl-ok "hello" "carl"
 check-repl-ok "(quote (write hello))" "(write hello)"
+check-repl-ok "(write (cons (quote hello) (cons (quote world) null)))" "(hello world)"
+check-repl-ok "(apply write (cons (quote hello) (cons (quote world) null)))" "(hello world)"
 
 echo "Passed $SUCCESS of $TOTAL"
 
