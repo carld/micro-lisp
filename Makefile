@@ -1,11 +1,18 @@
-CC=gcc
-CFLAGS= -Wall -pedantic -ansi -g
-default: micro-lisp
-	./test.sh
+.PHONY: clean stats test
+
+CC ?= gcc
+CFLAGS += -Wall -pedantic -O2 -g
+
+all: clean micro-lisp stats test
 
 micro-lisp: micro-lisp.c
 	$(CC) $(CFLAGS) -o $@ $^
-	wc micro-lisp.c
+
+stats: micro-lisp.c
+	wc $^
+
+test: micro-lisp
+	./test.sh ./micro-lisp
 
 clean:
-	rm -v micro-lisp
+	@rm -fv micro-lisp
