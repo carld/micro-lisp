@@ -2,6 +2,8 @@
 
 Objective: implement a small Lisp/Scheme language in as little C code as possible.
 
+_This is a hobby project for educational purposes, it has bugs and may fault without warning. Pull requests and improvements welcome_
+
 The interpreter supports `lambda`, e.g.
 
 ```lisp
