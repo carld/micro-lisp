@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -Wall -pedantic -ansi -g
+CFLAGS= -Wall -pedantic -O2 -g
 default: micro-lisp
 	./test.sh
 
