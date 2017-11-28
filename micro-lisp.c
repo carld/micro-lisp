@@ -26,10 +26,10 @@ static void gettoken() {
   token[index] = '\0';
 }
 
-#define is_pair(x) (((long)x & 0x1) == 0x1)  /* tag pointer to pair with 0x1 (alignment dependent)*/
-#define is_atom(x) (((long)x & 0x1) == 0x0)
-#define untag(x)   ((long) x & ~0x1)
-#define tag(x)     ((long) x | 0x1)
+#define is_pair(x) (((uintptr_t)x & 0x1) == 0x1)  /* tag pointer to pair with 0x1 (alignment dependent)*/
+#define is_atom(x) (((uintptr_t)x & 0x1) == 0x0)
+#define untag(x)   ((uintptr_t) x & ~0x1)
+#define tag(x)     ((uintptr_t) x | 0x1)
 #define car(x)     (((List*)untag(x))->data)
 #define cdr(x)     (((List*)untag(x))->next)
 #define e_true     cons( intern("quote"), cons( intern("t"), 0))
