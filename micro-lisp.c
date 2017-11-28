@@ -11,8 +11,8 @@ List *symbols = 0;
 static int look; /* look ahead character */
 #define SYMBOL_MAX  32
 static char token[SYMBOL_MAX]; /* token */
-#define is_space(x)  (x == ' ' || x == '\n')
-#define is_parens(x) (x == '(' || x == ')')
+int is_space(char x)  { return x == ' ' || x == '\n'; }
+int is_parens(char x) { return x == '(' || x == ')'; }
 
 static void gettoken() {
   int index = 0;
