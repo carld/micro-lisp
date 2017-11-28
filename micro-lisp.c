@@ -73,7 +73,8 @@ void print_obj(List *ob, int head_of_list) {
     if (head_of_list) printf("(");
     print_obj(car(ob), 1);
     if (cdr(ob) != 0) {
-      if (is_pair(cdr(ob))) {  printf(" "); print_obj(cdr(ob), 0);  }
+      printf(" ");
+      print_obj(cdr(ob), 0);
     } else  printf(")");
   }
 }
