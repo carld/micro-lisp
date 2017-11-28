@@ -30,7 +30,7 @@ check-prog-ok() {
 
 check-repl-ok() {
   echo "$1 -> $2"
-  echo $1 | cat repl0.lisp - | ./micro-lisp | grep -q "^$2$"
+  echo $1 | cat repl0.lisp - | $LISP | grep -q "^$2$"
   if [ $? -eq 0 ]; then
     echo Test OK
     SUCCESS=$((SUCCESS + 1))
