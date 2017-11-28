@@ -9,7 +9,8 @@ typedef struct List {
 } List;
 List *symbols = 0;
 static int look; /* look ahead character */
-static char token[32]; /* token */
+#define SYMBOL_MAX  32
+static char token[SYMBOL_MAX]; /* token */
 #define is_space(x)  (x == ' ' || x == '\n')
 #define is_parens(x) (x == '(' || x == ')')
 
@@ -19,7 +20,7 @@ static void gettoken() {
   if (is_parens(look)) {
     token[index++] = look;  look = getchar();
   } else {
-    while(look != EOF && !is_space(look) && !is_parens(look)) {
+    while(index < SYMBOL_MAX && look != EOF && !is_space(look) && !is_parens(look)) {
       token[index++] = look;  look = getchar();
     }
   }
