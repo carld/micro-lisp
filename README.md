@@ -2,7 +2,7 @@
 
 Objective: implement a small Lisp/Scheme language in as little C code as possible.
 
-_This is a hobby project for educational purposes, it has bugs and may fault without warning. Pull requests and improvements welcome_
+_This is a hobby project for educational purposes, it has bugs and may fail without warning. Pull requests and improvements welcome_
 
 The interpreter supports `lambda`, e.g.
 
@@ -23,9 +23,9 @@ The special forms `if` and `quote` behave in a typical way:
 The only types are symbols and pairs.
 
 Non-quoted symbols are looked up in the environment. If they have no associated
-value the result is `null` in fact zero. Because there is no numeric type a number for
-example 7 will be treated as any other symbol and looked up in the environment.
-Note in the examples above numbers are quoted to prevent that.
+value the result is `null`; in fact, zero. Because there is no numeric type a 
+number e.g. `7` will be treated like any other symbol and looked up in the environment. 
+Note in the examples above how numbers are quoted to prevent that.
 
 The built-in primitives in the environment are: `car`, `cdr`, `cons`, `eq?`,
 `pair?`, `read`, `write`.
