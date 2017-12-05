@@ -65,5 +65,6 @@
  (cons (cons (quote pair?) (cons pair? null))
  (cons (cons (quote symbol?) (cons symbol? null))
  (cons (cons (quote null) (cons null null))
- (cons (cons (quote write) (cons write null)) null)))))))))
+ (cons (cons (quote null?) (cons null? null))
+ (cons (cons (quote write) (cons write null)) null))))))))))
  )
