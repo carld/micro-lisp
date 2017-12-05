@@ -4,9 +4,7 @@ LISP="${1:-./micro-flisp}"
 TOTAL=0
 SUCCESS=0
 
-check-ok() {
-  echo "$1 -> $2"
-  echo "$1" | $LISP | grep -q "^$2$"
+success-counter() {
   if [ $? -eq 0 ]; then
     echo Test OK
     SUCCESS=$((SUCCESS + 1))
@@ -14,30 +12,30 @@ check-ok() {
     echo Test FAIL
   fi
   TOTAL=$((TOTAL + 1))
+}
+
+check-ok() {
+  echo "$1 -> $2"
+  echo "$1" | $LISP | grep -q "^$2$"
+  success-counter
 }
 
 check-prog-ok() {
   echo "$1 -> $2"
   cat $1 | $LISP | grep -q "^$2$"
-  if [ $? -eq 0 ]; then
-    echo Test OK
-    SUCCESS=$((SUCCESS + 1))
-  else
-    echo Test FAIL
-  fi
-  TOTAL=$((TOTAL + 1))
+  success-counter
 }
 
 check-repl-ok() {
   echo "$1 -> $2"
   echo $1 | cat repl0.lisp - | $LISP | grep -q "^$2$"
-  if [ $? -eq 0 ]; then
-    echo Test OK
-    SUCCESS=$((SUCCESS + 1))
-  else
-    echo Test FAIL
-  fi
-  TOTAL=$((TOTAL + 1))
+  success-counter
+}
+
+check-repl-file-ok() {
+  echo "$1 -> $2"
+  cat repl0.lisp $1 | $LISP | grep -q "^$2$"
+  success-counter
 }
 
 check-ok '(car (quote (1 2 3 4)))' '1'
@@ -69,6 +67,8 @@ check-repl-ok 'hello' 'carl'
 check-repl-ok '(quote (write hello))' '(write hello)'
 check-repl-ok '(write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
 check-repl-ok '(apply write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
+
+#check-repl-file-ok eval.lisp 'hello'
 
 echo "Passed $SUCCESS of $TOTAL"
 

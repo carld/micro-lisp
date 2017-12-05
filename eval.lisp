@@ -1,9 +1,9 @@
 ((lambda (eval environment)
    (eval eval
       (quote
-        ((lambda (x y) (apply y x)) hello write)
-      )
+        ((lambda (x y) (y x)) (quote hello) write))
       environment))
+
  (lambda (eval^ exp env)
    (if (symbol? exp)
      ((lambda (e1 env1)
@@ -66,5 +66,6 @@
  (cons (cons (quote symbol?) (cons symbol? null))
  (cons (cons (quote null) (cons null null))
  (cons (cons (quote null?) (cons null? null))
- (cons (cons (quote write) (cons write null)) null))))))))))
+ (cons (cons (quote read) (cons read null))
+ (cons (cons (quote write) (cons write null)) null)))))))))))
  )
