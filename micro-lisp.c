@@ -21,7 +21,7 @@ static void gettoken() {
   if (is_parens(look)) {
     token[index++] = look;  look = getchar();
   } else {
-    while(index < SYMBOL_MAX && look != EOF && !is_space(look) && !is_parens(look)) {
+    while(index < SYMBOL_MAX - 1 && look != EOF && !is_space(look) && !is_parens(look)) {
       token[index++] = look;  look = getchar();
     }
   }
