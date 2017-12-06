@@ -28,13 +28,13 @@ check-prog-ok() {
 
 check-repl-ok() {
   echo "$1 -> $2"
-  echo $1 | cat repl0.lisp - | $LISP | grep -q "^$2$"
+  echo $1 | cat examples/repl0.lisp - | $LISP | grep -q "^$2$"
   success-counter
 }
 
 check-repl-file-ok() {
   echo "$1 -> $2"
-  cat repl0.lisp $1 | $LISP | grep -q "^$2$"
+  cat examples/repl0.lisp $1 | $LISP | grep -q "^$2$"
   success-counter
 }
 
@@ -58,17 +58,17 @@ check-ok '(write (cons (quote (hello world)) null))' '((hello world))'
 check-ok '((lambda (x y) (cons y (cons x null))) (quote 67) (quote 89))' '(89 67)'
 check-ok '(quote a-symbol-that-is-longer-than-thirty-two-bytes)' 'a-symbol-that-is-longer-than-th'
 
-check-prog-ok assoc.lisp 'lisp'
-check-prog-ok apply.lisp '(fn 1 2 3 4)'
-check-prog-ok apply2.lisp '(fn (1 2 3 4))'
-check-prog-ok reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+check-prog-ok examples/assoc.lisp 'lisp'
+check-prog-ok examples/apply.lisp '(fn 1 2 3 4)'
+check-prog-ok examples/apply2.lisp '(fn (1 2 3 4))'
+check-prog-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
 
 check-repl-ok 'hello' 'carl'
 check-repl-ok '(quote (write hello))' '(write hello)'
 check-repl-ok '(write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
 check-repl-ok '(apply write (cons (cons (quote hello) (cons (quote world) null)) null))' '(hello world)'
 
-check-repl-file-ok eval.lisp 'hello'
+check-repl-file-ok examples/eval.lisp 'hello'
 
 echo "Passed $SUCCESS of $TOTAL"
 
