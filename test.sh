@@ -66,9 +66,9 @@ check-prog-ok reverse.lisp '(9 8 7 6 5 4 3 2 1)'
 check-repl-ok 'hello' 'carl'
 check-repl-ok '(quote (write hello))' '(write hello)'
 check-repl-ok '(write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
-check-repl-ok '(apply write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
+check-repl-ok '(apply write (cons (cons (quote hello) (cons (quote world) null)) null))' '(hello world)'
 
-#check-repl-file-ok eval.lisp 'hello'
+check-repl-file-ok eval.lisp 'hello'
 
 echo "Passed $SUCCESS of $TOTAL"
 
