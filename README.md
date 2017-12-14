@@ -8,7 +8,7 @@ The interpreter supports `lambda`, e.g.
 
 ```lisp
   ((lambda (x) (cons x (quote 1))) (quote 7))
-  (7 1)
+  (7 . 1)
 ```
 
 Note that `lambda` does not capture free variables (variables that are not passed as arguments and refer to an outer scope). Free variables will resolve to their assigned values in the environment when the body of the lambda is evaluated.
