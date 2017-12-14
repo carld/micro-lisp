@@ -93,10 +93,18 @@ void print_obj(Object *ob, int head_of_list) {
   } else if (ob->tag == _Pair) {
     if (head_of_list) printf("(");
     print_obj(car(ob), 1);
-    if (cdr(ob) != 0) {
+    if (cdr(ob) == 0) {
+      printf(")");
+    }
+    else if(cdr(ob)->tag == _Pair) {
       printf(" ");
       print_obj(cdr(ob), 0);
-    } else  printf(")");
+    }
+    else {
+      printf(" . ");
+      print_obj(cdr(ob), 0);
+      printf(")");
+    }
   }
 }
 
