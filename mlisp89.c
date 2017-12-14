@@ -5,7 +5,7 @@
 #include <string.h>
 #define debug(m,e) printf("%s:%d: %s:",__FILE__,__LINE__,m); print_obj(e,1); puts("");
 typedef struct Object {
-  enum { _Symbol, _Pair, _Primitive } tag;
+  enum { _Symbol, _Pair, _Primitive, _Closure } tag;
   union {
     char * string;
     struct Object * (*pfn) (struct Object *);
@@ -13,6 +13,11 @@ typedef struct Object {
       struct Object * next;
       struct Object * data;
     } pair;
+    struct Closure {
+      struct Object * params;
+      struct Object * body;
+      struct Object * env;
+    } closure;
   } value;
 } Object;
 Object * symbols = 0;
@@ -61,6 +66,15 @@ Object * newprimop( Object * (*fn) (Object *) ) {
   return obj;
 }
 
+Object * newclosure( Object *params, Object *body, Object *env ) {
+  Object * obj = calloc(1, sizeof (Object) );
+  obj->tag = _Closure;
+  obj->value.closure.params = params;
+  obj->value.closure.body = body;
+  obj->value.closure.env = env;
+  return obj;
+}
+
 Object * intern(char *sym) {
   Object *_pair = symbols;
   for ( ; _pair ; _pair = cdr(_pair))
@@ -105,6 +119,8 @@ void print_obj(Object *ob, int head_of_list) {
       print_obj(cdr(ob), 0);
       printf(")");
     }
+  } else if (ob->tag == _Closure) {
+    printf("<CLOSURE>");
   }
 }
 
@@ -130,14 +146,28 @@ Object * evlist(Object *list, Object *env) {
   return head;
 }
 
+Object * evlist_bind_append(Object *list, Object *names, Object *env, Object *tail) {
+  Object *head = tail, **args = &head;
+  for ( ; list ; list = cdr(list), names = cdr(names) ) {
+    *args = cons( cons(car(names), cons(eval(car(list), env), 0))
+		, tail);
+    args = &( (Object *) *args )->value.pair.next;
+  }
+  return head;
+}
+
+
 Object * apply_primitive(Object *primptr, Object *args) {
   return primptr->value.pfn (args);
 }
 
 Object * eval(Object *exp, Object *env) {
   if (exp->tag == _Symbol ) {
-    for ( ; env != 0; env = cdr(env) )
-      if (exp == car(car(env)))  return car(cdr(car(env)));
+    for ( ; env != 0; env = cdr(env) ) {
+      if (exp == car(car(env))) return car(cdr(car(env)));
+    }
+    puts("unbound variable");
+    return 0;
   } else if ( car (exp) ->tag == _Symbol) { /* special forms */
     if (car(exp) == intern("quote")) {
       return car(cdr(exp));
@@ -147,25 +177,27 @@ Object * eval(Object *exp, Object *env) {
       else
         return eval (car(cdr(cdr(cdr(exp)))), env);
     } else if (car(exp) == intern("lambda")) {
-      return exp; /* todo: create a closure and capture free vars */
+      return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
     } else if (car(exp) == intern("apply")) { /* apply function to list */
       /* assumes one argument and that it is a list */
       Object *args = evlist (cdr(cdr(exp)), env);
       args = car(args); /* assumes one argument and that it is a list */
       return apply_primitive( eval(car(cdr(exp)), env), args);
-    } else { /* function call */
-      Object *primop = eval (car(exp), env);
-      if (primop->tag == _Pair) { /* user defined lambda, arg list eval happens in binding  below */
-        return eval( cons(primop, cdr(exp)), env );
-      } else if (primop) { /* built-in primitive */
-        return apply_primitive(primop, evlist(cdr(exp), env));
-      }
     }
-  } else if (car(car(exp)) == intern("lambda")) { /* should be a lambda, bind names into env and eval body */
-    Object *extenv = env, *names = car(cdr(car(exp))), *vars = cdr(exp);
-    for (  ; names ; names = cdr(names), vars = cdr(vars) )
-      extenv = cons (cons(car(names),  cons(eval (car(vars), env), 0)), extenv);
-    return eval (car(cdr(cdr(car(exp)))), extenv);
+   }
+   /* function call */
+   if(exp->tag == _Pair) {
+      Object *func = eval (car(exp), env);
+      if (func && func->tag == _Closure) {
+/* Object * evlist_bind_append(Object *list, Object *names, Object *env, Object *tail) { */
+        env = evlist_bind_append(cdr(exp), func->value.closure.params, env, func->value.closure.env);
+        return eval( func->value.closure.body, env );
+      } else if (func) { /* built-in primitive */
+        return apply_primitive(func, evlist(cdr(exp), env));
+      } else {
+        puts("invalid application");
+        return 0;
+      }
   }
   puts("cannot evaluate expression");
   return 0;

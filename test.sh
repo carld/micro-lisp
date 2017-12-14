@@ -58,6 +58,7 @@ check-ok '(cons (quote 1) (cons (quote 2) null))' '(1 2)'
 check-ok '(write (cons (quote (hello world)) null))' '((hello world))'
 check-ok '((lambda (x y) (cons y (cons x null))) (quote 67) (quote 89))' '(89 67)'
 check-ok '(quote a-symbol-that-is-longer-than-thirty-two-bytes)' 'a-symbol-that-is-longer-than-th'
+check-ok '((lambda (f x) (f)) ((lambda (x) (lambda () x)) (quote x)) (quote y))' 'x'
 
 check-prog-ok examples/assoc.lisp 'lisp'
 check-prog-ok examples/apply.lisp '(fn 1 2 3 4)'
