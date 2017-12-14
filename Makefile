@@ -3,16 +3,20 @@
 CC ?= gcc
 CFLAGS += -Wall -pedantic -O2 -g
 
-all: clean micro-lisp stats test
+all: clean micro-lisp mlisp89 stats test
 
 micro-lisp: micro-lisp.c
 	$(CC) $(CFLAGS) -o $@ $^
 
+mlisp89: mlisp89.c
+	$(CC) $(CFLAGS) -ansi -std=c89 -o $@ $^
+
 stats: micro-lisp.c
 	wc $^
 
-test: micro-lisp
+test: micro-lisp mlisp89
 	./test.sh ./micro-lisp
+	./test.sh ./mlisp89
 
 clean:
-	@rm -fv micro-lisp
+	@rm -fv micro-lisp mlisp89
