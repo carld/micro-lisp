@@ -64,6 +64,7 @@ check-prog-ok examples/assoc.lisp 'lisp'
 check-prog-ok examples/apply.lisp '(fn 1 2 3 4)'
 check-prog-ok examples/apply2.lisp '(fn (1 2 3 4))'
 check-prog-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+check-prog-ok examples/map.lisp '((1 0) (2 0) (3 0))'
 
 check-repl-ok 'hello' 'carl'
 check-repl-ok '(quote (write hello))' '(write hello)'
