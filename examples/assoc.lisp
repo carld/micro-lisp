@@ -2,11 +2,11 @@
   ((lambda (assq)
       (assq assq e1 env1))
    (lambda (assq^ e1 env1)
-      (if (null? env1)
-         null
-         (if (eq? e1 (car (car env1)))
-             (car (cdr (car env1)))
-             (assq^ assq^ e1 (cdr env1)))))))
+      (cond
+        ((null? env1) null)
+        ((eq? e1 (car (car env1)))
+            (car (cdr (car env1))))
+        ((quote t)  (assq^ assq^ e1 (cdr env1)))))))
 
      (quote micro)
 

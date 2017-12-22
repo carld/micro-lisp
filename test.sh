@@ -20,7 +20,7 @@ check-ok() {
   success-counter
 }
 
-check-prog-ok() {
+check-file-ok() {
   echo "$1 -> $2"
   cat $1 | $LISP | grep -q "^$2$"
   success-counter
@@ -60,13 +60,13 @@ check-ok '((lambda (x y) (cons y (cons x null))) (quote 67) (quote 89))' '(89 67
 check-ok '(quote a-symbol-that-is-longer-than-thirty-two-bytes)' 'a-symbol-that-is-longer-than-th'
 check-ok '((lambda (f x) (f)) ((lambda (x) (lambda () x)) (quote x)) (quote y))' 'x'
 
-check-prog-ok examples/assoc.lisp 'lisp'
-check-prog-ok examples/apply.lisp '(fn 1 2 3 4)'
-check-prog-ok examples/apply2.lisp '(fn (1 2 3 4))'
-check-prog-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
-check-prog-ok examples/map.lisp '((1 0) (2 0) (3 0))'
-check-prog-ok examples/lambda-logic.lisp '(true false true false)'
-check-prog-ok examples/ycomb.lisp '(1 2 3)'
+check-file-ok examples/assoc.lisp 'lisp'
+check-file-ok examples/apply.lisp '(fn 1 2 3 4)'
+check-file-ok examples/apply2.lisp '(fn (1 2 3 4))'
+check-file-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+check-file-ok examples/map.lisp '((1 0) (2 0) (3 0))'
+check-file-ok examples/lambda-logic.lisp '(true false true false)'
+check-file-ok examples/ycomb.lisp '(1 2 3)'
 
 check-repl-ok 'hello' 'carl'
 check-repl-ok '(quote (write hello))' '(write hello)'
@@ -74,6 +74,13 @@ check-repl-ok '(write (cons (quote hello) (cons (quote world) null)))' '(hello w
 check-repl-ok '(apply write (cons (cons (quote hello) (cons (quote world) null)) null))' '(hello world)'
 
 check-repl-file-ok examples/eval.lisp 'hello'
+check-repl-file-ok examples/assoc.lisp 'lisp'
+check-repl-file-ok examples/apply.lisp '(fn 1 2 3 4)'
+check-repl-file-ok examples/apply2.lisp '(fn (1 2 3 4))'
+check-repl-file-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+check-repl-file-ok examples/map.lisp '((1 0) (2 0) (3 0))'
+check-repl-file-ok examples/lambda-logic.lisp '(true false true false)'
+check-repl-file-ok examples/ycomb.lisp '(1 2 3)'
 
 echo "Passed $SUCCESS of $TOTAL"
 

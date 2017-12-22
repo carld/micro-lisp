@@ -156,6 +156,15 @@ Object * evlist_bind_append(Object *list, Object *names, Object *env, Object *ta
   return head;
 }
 
+Object * evcond(Object *exp, Object *env) {
+  if (exp == 0) {
+    return 0;
+  } else if (eval (car(car(exp)), env)) {
+    return eval(car(cdr(car(exp))), env);
+  } else {
+    return evcond(cdr(exp), env);
+  }
+}
 
 Object * apply_primitive(Object *primptr, Object *args) {
   return primptr->value.pfn (args);
@@ -168,36 +177,32 @@ Object * eval(Object *exp, Object *env) {
     }
     puts("unbound variable");
     return 0;
-  } else if ( car (exp) ->tag == _Symbol) { /* special forms */
-    if (car(exp) == intern("quote")) {
-      return car(cdr(exp));
-    } else if (car(exp) == intern("if")) {
-      if (eval (car(cdr(exp)), env) != 0)
-        return eval (car(cdr(cdr(exp))), env);
-      else
-        return eval (car(cdr(cdr(cdr(exp)))), env);
-    } else if (car(exp) == intern("lambda")) {
-      return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
-    } else if (car(exp) == intern("apply")) { /* apply function to list */
-      /* assumes one argument and that it is a list */
-      Object *args = evlist (cdr(cdr(exp)), env);
-      args = car(args); /* assumes one argument and that it is a list */
-      return apply_primitive( eval(car(cdr(exp)), env), args);
-    }
-   }
-   /* function call */
-   if(exp->tag == _Pair) {
-      Object *func = eval (car(exp), env);
-      if (func && func->tag == _Closure) {
-/* Object * evlist_bind_append(Object *list, Object *names, Object *env, Object *tail) { */
-        env = evlist_bind_append(cdr(exp), func->value.closure.params, env, func->value.closure.env);
-        return eval( func->value.closure.body, env );
-      } else if (func) { /* built-in primitive */
-        return apply_primitive(func, evlist(cdr(exp), env));
-      } else {
-        puts("invalid application");
-        return 0;
+  } else if (exp->tag == _Pair) {
+    if ( car (exp) ->tag == _Symbol) { /* special forms */
+      if (car(exp) == intern("quote")) {
+        return car(cdr(exp));
+      } else if (car(exp) == intern("cond")) {
+        return evcond(cdr(exp), env);
+      } else if (car(exp) == intern("lambda") || car(exp) == intern("λ")) {
+        return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
+      } else if (car(exp) == intern("apply")) { /* apply function to list */
+        /* assumes one argument and that it is a list */
+        Object *args = evlist (cdr(cdr(exp)), env);
+        args = car(args); /* assumes one argument and that it is a list */
+        return apply_primitive( eval(car(cdr(exp)), env), args);
       }
+    }
+    /* function call */
+    Object *func = eval (car(exp), env);
+    if (func && func->tag == _Closure) {
+      env = evlist_bind_append(cdr(exp), func->value.closure.params, env, func->value.closure.env);
+      return eval( func->value.closure.body, env );
+    } else if (func) { /* built-in primitive */
+      return apply_primitive(func, evlist(cdr(exp), env));
+    } else {
+      puts("invalid application");
+      return 0;
+    }
   }
   puts("cannot evaluate expression");
   return 0;

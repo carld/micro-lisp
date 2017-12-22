@@ -5,6 +5,6 @@
    ((lambda (rev)
       (rev rev null list))
     (lambda (rev^ a l)
-      (if (null? l)
-          a
-          (rev^ rev^ (cons (car l) a) (cdr l )))))))
+      (cond
+        ((null? l) a)
+        ((quote t) (rev^ rev^ (cons (car l) a) (cdr l ))))))))

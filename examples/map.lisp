@@ -7,7 +7,8 @@
                     (cons (quote 3) null)))))
 
   (lambda (map^ fn rest)
-    (if (eq? null rest)
-      rest
-      (cons (fn (car rest)) (map^ map^ fn (cdr rest))))) )
+    (cond
+     ((eq? null rest) rest)
+     ((quote t)
+        (cons (fn (car rest)) (map^ map^ fn (cdr rest))))) ))
 
