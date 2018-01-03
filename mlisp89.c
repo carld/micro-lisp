@@ -178,6 +178,7 @@ Object * eval(Object *exp, Object *env) {
     puts("unbound variable");
     return 0;
   } else if (exp->tag == _Pair) {
+    Object *func = 0;
     if ( car (exp) ->tag == _Symbol) { /* special forms */
       if (car(exp) == intern("quote")) {
         return car(cdr(exp));
@@ -186,14 +187,13 @@ Object * eval(Object *exp, Object *env) {
       } else if (car(exp) == intern("lambda") || car(exp) == intern("λ")) {
         return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
       } else if (car(exp) == intern("apply")) { /* apply function to list */
-        /* assumes one argument and that it is a list */
         Object *args = evlist (cdr(cdr(exp)), env);
         args = car(args); /* assumes one argument and that it is a list */
         return apply_primitive( eval(car(cdr(exp)), env), args);
       }
     }
     /* function call */
-    Object *func = eval (car(exp), env);
+    func = eval (car(exp), env);
     if (func && func->tag == _Closure) {
       env = evlist_bind_append(cdr(exp), func->value.closure.params, env, func->value.closure.env);
       return eval( func->value.closure.body, env );
