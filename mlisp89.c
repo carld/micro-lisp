@@ -26,8 +26,8 @@ static int look; /* look ahead character */
 static char token[SYMBOL_MAX]; /* token */
 int is_space(char x)  { return x == ' ' || x == '\n'; }
 int is_parens(char x) { return x == '(' || x == ')'; }
-Object *car(Object *x) { return x->value.pair.data; }
-Object *cdr(Object *x) { return x->value.pair.next; }
+Object *car(Object *x) { return x ? x->value.pair.data : 0; }
+Object *cdr(Object *x) { return x ? x->value.pair.next : 0; }
 static void gettoken() {
   int index = 0;
   while(is_space(look)) { look = getchar(); }
@@ -44,31 +44,33 @@ static void gettoken() {
 #define e_true     cons(intern("quote"), cons(intern("t"), 0))
 #define e_false    0
 
+Object * tagalloc(int type) {
+  Object *obj = calloc( 1, sizeof (Object) );
+  obj->tag = type;
+  return obj;
+}
+
 Object * cons(Object * _car, Object * _cdr) {
-  Object *_pair = calloc( 1, sizeof (Object) );
-  _pair->tag = _Pair;
+  Object *_pair = tagalloc(_Pair);
   _pair->value.pair.data = _car;
   _pair->value.pair.next = _cdr;
   return _pair;
 }
 
 Object * newsymbol(char *str) {
-  Object *obj = calloc( 1, sizeof (Object) );
-  obj->tag = _Symbol;
+  Object *obj = tagalloc(_Symbol);
   obj->value.string = strdup(str);
   return obj;
 }
 
 Object * newprimop( Object * (*fn) (Object *) ) {
-  Object * obj = calloc(1, sizeof (Object) );
-  obj->tag = _Primitive;
+  Object *obj = tagalloc(_Primitive);
   obj->value.pfn = fn;
   return obj;
 }
 
 Object * newclosure( Object *params, Object *body, Object *env ) {
-  Object * obj = calloc(1, sizeof (Object) );
-  obj->tag = _Closure;
+  Object *obj = tagalloc(_Closure);
   obj->value.closure.params = params;
   obj->value.closure.body = body;
   obj->value.closure.env = env;
@@ -109,12 +111,10 @@ void print_obj(Object *ob, int head_of_list) {
     print_obj(car(ob), 1);
     if (cdr(ob) == 0) {
       printf(")");
-    }
-    else if(cdr(ob)->tag == _Pair) {
+    } else if(cdr(ob)->tag == _Pair) {
       printf(" ");
       print_obj(cdr(ob), 0);
-    }
-    else {
+    } else {
       printf(" . ");
       print_obj(cdr(ob), 0);
       printf(")");
@@ -134,40 +134,22 @@ Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; 
 Object *freadobj(Object *a) {  look = getchar(); gettoken(); return getobj();  }
 Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
 
-Object * eval(Object *exp, Object *env);
-
-Object * evlist(Object *list, Object *env) {
-  /* http://cslibrary.stanford.edu/105/LinkedListProblems.pdf */
+Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context) {
   Object *head = 0, **args = &head;
   for ( ; list ; list = cdr(list) ) {
-    *args = cons( eval(car(list), env) , 0);
+    *args = cons( fn(car(list), context), 0);
     args = &( (Object *) *args )->value.pair.next;
   }
   return head;
 }
 
-Object * evlist_bind_append(Object *list, Object *names, Object *env, Object *tail) {
+Object * bind_append(Object *names, Object *values, Object *tail) {
   Object *head = tail, **args = &head;
-  for ( ; list ; list = cdr(list), names = cdr(names) ) {
-    *args = cons( cons(car(names), cons(eval(car(list), env), 0))
-		, tail);
+  for ( ; values ; values = cdr(values), names = cdr(names) ) {
+    *args = cons( cons(car(names), cons(car(values), 0)) , tail);
     args = &( (Object *) *args )->value.pair.next;
   }
   return head;
-}
-
-Object * evcond(Object *exp, Object *env) {
-  if (exp == 0) {
-    return 0;
-  } else if (eval (car(car(exp)), env)) {
-    return eval(car(cdr(car(exp))), env);
-  } else {
-    return evcond(cdr(exp), env);
-  }
-}
-
-Object * apply_primitive(Object *primptr, Object *args) {
-  return primptr->value.pfn (args);
 }
 
 Object * eval(Object *exp, Object *env) {
@@ -178,30 +160,29 @@ Object * eval(Object *exp, Object *env) {
     puts("unbound variable");
     return 0;
   } else if (exp->tag == _Pair) {
-    Object *func = 0;
-    if ( car (exp) ->tag == _Symbol) { /* special forms */
+    if (car (exp) ->tag == _Symbol) {
       if (car(exp) == intern("quote")) {
         return car(cdr(exp));
       } else if (car(exp) == intern("cond")) {
-        return evcond(cdr(exp), env);
+        for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
+          if (eval(car(car(exp)), env))
+            return eval(car(cdr(car(exp))), env);
+        }
+        return 0;
       } else if (car(exp) == intern("lambda") || car(exp) == intern("λ")) {
         return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
-      } else if (car(exp) == intern("apply")) { /* apply function to list */
-        Object *args = evlist (cdr(cdr(exp)), env);
-        args = car(args); /* assumes one argument and that it is a list */
-        return apply_primitive( eval(car(cdr(exp)), env), args);
+      } else if (car(exp) == intern("apply")) {
+        return eval(car(cdr(exp)), env)->value.pfn( car (  map(cdr(cdr(exp)), eval, env)) );
+      } else {
+        return eval( cons(eval(car(exp), env), cdr(exp)), env);
       }
-    }
-    /* function call */
-    func = eval (car(exp), env);
-    if (func && func->tag == _Closure) {
-      env = evlist_bind_append(cdr(exp), func->value.closure.params, env, func->value.closure.env);
-      return eval( func->value.closure.body, env );
-    } else if (func) { /* built-in primitive */
-      return apply_primitive(func, evlist(cdr(exp), env));
-    } else {
-      puts("invalid application");
-      return 0;
+    } else if (car(exp)->tag == _Closure) {
+      env = bind_append(car(exp)->value.closure.params, map(cdr(exp), eval, env), car(exp)->value.closure.env);
+      return eval( car(exp)->value.closure.body, env );
+    } else if (car(exp)->tag == _Primitive) {
+      return car(exp)->value.pfn ( map(cdr(exp), eval, env)  );
+    } else if (car(exp)->tag == _Pair) {
+      return eval(cons(eval(car(exp), env), cdr(exp)), env);
     }
   }
   puts("cannot evaluate expression");
