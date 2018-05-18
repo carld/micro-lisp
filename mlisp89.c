@@ -7,7 +7,7 @@
 typedef struct Object {
   enum { _Symbol, _Pair, _Primitive, _Closure } tag;
   union {
-    char * string;
+    const char * string;
     struct Object * (*pfn) (struct Object *);
     struct List {
       struct Object * next;
@@ -52,12 +52,11 @@ Object * tagalloc(int type) {
 
 Object * cons(Object * _car, Object * _cdr) {
   Object *_pair = tagalloc(_Pair);
-  _pair->value.pair.data = _car;
-  _pair->value.pair.next = _cdr;
+  _pair->value.pair.data = _car, _pair->value.pair.next = _cdr;
   return _pair;
 }
 
-Object * newsymbol(char *str) {
+Object * newsymbol(const char *str) {
   Object *obj = tagalloc(_Symbol);
   obj->value.string = strdup(str);
   return obj;
@@ -71,13 +70,11 @@ Object * newprimop( Object * (*fn) (Object *) ) {
 
 Object * newclosure( Object *params, Object *body, Object *env ) {
   Object *obj = tagalloc(_Closure);
-  obj->value.closure.params = params;
-  obj->value.closure.body = body;
-  obj->value.closure.env = env;
+  obj->value.closure.params = params, obj->value.closure.body = body, obj->value.closure.env = env;
   return obj;
 }
 
-Object * intern(char *sym) {
+Object * intern(const char *sym) {
   Object *_pair = symbols;
   for ( ; _pair ; _pair = cdr(_pair))
     if (strncmp(sym, car(_pair)->value.string, SYMBOL_MAX)==0)
@@ -134,6 +131,17 @@ Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; 
 Object *freadobj(Object *a) {  look = getchar(); gettoken(); return getobj();  }
 Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
 
+Object *let_macro(Object *exp) {
+  Object *names_head = 0, **names = &names_head, *values_head = 0, **values = &values_head, *body = car(cdr(cdr(exp)));
+  for ( exp = car(cdr(exp)); exp ; exp = cdr(exp) ) {
+    *names = cons(car(car(exp)), 0);
+    names = &( (Object *) *names )->value.pair.next;
+    *values = cons(car(cdr(car(exp))), 0);
+    values = &( (Object *) *values )->value.pair.next;
+  }
+  return cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head);
+}
+
 Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context) {
   Object *head = 0, **args = &head;
   for ( ; list ; list = cdr(list) ) {
@@ -157,7 +165,7 @@ Object * eval(Object *exp, Object *env) {
     for ( ; env != 0; env = cdr(env) ) {
       if (exp == car(car(env))) return car(cdr(car(env)));
     }
-    puts("unbound variable");
+    printf("unbound variable: "); print_obj(exp, 1); printf("\n");
     return 0;
   } else if (exp->tag == _Pair) {
     if (car (exp) ->tag == _Symbol) {
@@ -165,19 +173,23 @@ Object * eval(Object *exp, Object *env) {
         return car(cdr(exp));
       } else if (car(exp) == intern("cond")) {
         for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
-          if (eval(car(car(exp)), env))
+          if (eval(car(car(exp)), env)) /* anything not #f */
             return eval(car(cdr(car(exp))), env);
         }
         return 0;
       } else if (car(exp) == intern("lambda") || car(exp) == intern("λ")) {
         return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
       } else if (car(exp) == intern("apply")) {
-        return eval(car(cdr(exp)), env)->value.pfn( car (  map(cdr(cdr(exp)), eval, env)) );
+        return eval(car(cdr(exp)), env)->value.pfn( car(map(cdr(cdr(exp)),eval,env)) );
+      } else if (car(exp) == intern("let")) {
+        return eval(let_macro(exp), env);
       } else {
         return eval( cons(eval(car(exp), env), cdr(exp)), env);
       }
     } else if (car(exp)->tag == _Closure) {
-      env = bind_append(car(exp)->value.closure.params, map(cdr(exp), eval, env), car(exp)->value.closure.env);
+      env = bind_append(car(exp)->value.closure.params, /* named params */
+                        map(cdr(exp), eval, env),       /* evaluate params */
+                        car(exp)->value.closure.env);
       return eval( car(exp)->value.closure.body, env );
     } else if (car(exp)->tag == _Primitive) {
       return car(exp)->value.pfn ( map(cdr(exp), eval, env)  );
