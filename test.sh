@@ -72,20 +72,25 @@ check-file-ok examples/ycomb.lisp '(1 2 3)'
 check-file-ok examples/u-comb.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/u-comb-reverse.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/y-comb-reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+check-file-ok examples/macro.lisp '(1 2)'
 
-check-repl-ok 'hello' 'carl'
-check-repl-ok '(quote (write hello))' '(write hello)'
-check-repl-ok '(write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
-check-repl-ok '(apply write (cons (cons (quote hello) (cons (quote world) null)) null))' '(hello world)'
+echo "Passed $SUCCESS of $TOTAL"
 
-check-repl-file-ok examples/eval.lisp 'hello'
-check-repl-file-ok examples/assoc.lisp 'lisp'
-check-repl-file-ok examples/apply.lisp '(fn 1 2 3 4)'
-check-repl-file-ok examples/apply2.lisp '(fn (1 2 3 4))'
-check-repl-file-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
-check-repl-file-ok examples/map.lisp '((1 0) (2 0) (3 0))'
+# Meta Circular Interpreter Tests
+
+#check-repl-ok 'hello' 'carl'
+#check-repl-ok '(quote (write hello))' '(write hello)'
+#check-repl-ok '(write (cons (quote hello) (cons (quote world) null)))' '(hello world)'
+#check-repl-ok '(apply write (cons (cons (quote hello) (cons (quote world) null)) null))' '(hello world)'
+#
+#check-repl-file-ok examples/eval.lisp 'hello'
+#check-repl-file-ok examples/assoc.lisp 'lisp'
+#check-repl-file-ok examples/apply.lisp '(fn 1 2 3 4)'
+#check-repl-file-ok examples/apply2.lisp '(fn (1 2 3 4))'
+#check-repl-file-ok examples/reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+#check-repl-file-ok examples/map.lisp '((1 0) (2 0) (3 0))'
 #check-repl-file-ok examples/lambda-logic.lisp '(true false true false)'
 #check-repl-file-ok examples/ycomb.lisp '(1 2 3)'
 
-echo "Passed $SUCCESS of $TOTAL"
+#echo "Passed $SUCCESS of $TOTAL"
 

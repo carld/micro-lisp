@@ -3,12 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define LISP(code) #code
 #define debug(m,e) printf("%s:%d: %s:",__FILE__,__LINE__,m); print_obj(e,1); puts("");
 typedef struct Object {
-  enum { _Symbol, _Pair, _Primitive, _Closure } tag;
-  union {
+  enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax } tag;
+  union Value {
     const char * string;
     struct Object * (*pfn) (struct Object *);
+    struct Object * (*psyn) (struct Object *, struct Object *);
     struct List {
       struct Object * next;
       struct Object * data;
@@ -74,6 +76,18 @@ Object * newclosure( Object *params, Object *body, Object *env ) {
   return obj;
 }
 
+Object * newsyntax( Object * (*fn) (Object *, Object *) ) {
+  Object *obj = tagalloc(_Syntax);
+  obj->value.psyn = fn;
+  return obj;
+}
+
+Object * newmacro( Object *params, Object *body, Object *env ) {
+  Object *obj = tagalloc(_Macro);
+  obj->value.closure.params = params, obj->value.closure.body = body, obj->value.closure.env = env;
+  return obj;
+}
+
 Object * intern(const char *sym) {
   Object *_pair = symbols;
   for ( ; _pair ; _pair = cdr(_pair))
@@ -121,6 +135,9 @@ void print_obj(Object *ob, int head_of_list) {
   }
 }
 
+Object * eval(Object *exp, Object *env);
+Object * apply(Object *fun, Object *exp, Object *env);
+
 Object *fcons(Object *a)    {  return cons(car(a), car(cdr(a)));  }
 Object *fcar(Object *a)     {  return car(car(a));  }
 Object *fcdr(Object *a)     {  return cdr(car(a));  }
@@ -131,7 +148,23 @@ Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; 
 Object *freadobj(Object *a) {  look = getchar(); gettoken(); return getobj();  }
 Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
 
-Object *let_macro(Object *exp) {
+Object *fapply(Object *exp, Object *env) { return apply(eval(car(cdr(exp)), env), cdr(exp), env); }
+Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
+Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
+Object *fcond(Object *exp, Object *env) {
+  for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
+    if (eval(car(car(exp)), env)) /* anything not #f */
+      return eval(car(cdr(car(exp))), env);
+  }
+  return 0;
+}
+
+Object *fmacro(Object *exp, Object *env) {
+  Object *macro = eval(car(cdr(exp)), env);
+  return newmacro(macro->value.closure.params, macro->value.closure.body, macro->value.closure.env);
+}
+
+Object *flet(Object *exp, Object *env) {
   Object *names_head = 0, **names = &names_head, *values_head = 0, **values = &values_head, *body = car(cdr(cdr(exp)));
   for ( exp = car(cdr(exp)); exp ; exp = cdr(exp) ) {
     *names = cons(car(car(exp)), 0);
@@ -139,7 +172,7 @@ Object *let_macro(Object *exp) {
     *values = cons(car(cdr(car(exp))), 0);
     values = &( (Object *) *values )->value.pair.next;
   }
-  return cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head);
+  return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
 }
 
 Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context) {
@@ -160,44 +193,44 @@ Object * bind_append(Object *names, Object *values, Object *tail) {
   return head;
 }
 
+Object * _apply(Object *fun, Object *args) {
+  if (fun->tag == _Primitive) {
+    return fun->value.pfn(args);
+  } else if (fun->tag == _Closure) {
+    Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
+    return eval( fun->value.closure.body, env );
+  }
+  puts("not applicable: "); print_obj(fun, 1); printf("\n");
+  return 0;
+}
+
+Object * apply(Object *fun, Object *exp, Object *env) {
+  Object *args = cdr(exp);
+  if (fun->tag == _Macro) {
+    Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
+    return eval( fun->value.closure.body, env );
+  } else if (fun->tag == _Syntax) {
+    return fun->value.psyn(exp, env);
+  } else {
+    Object *arg_values = map(args, eval, env);
+    return _apply(fun, arg_values);
+  }
+}
+
 Object * eval(Object *exp, Object *env) {
   if (exp->tag == _Symbol ) {
     for ( ; env != 0; env = cdr(env) ) {
-      if (exp == car(car(env))) return car(cdr(car(env)));
+      if (exp == car(car(env)))
+        return car(cdr(car(env)));
     }
     printf("unbound variable: "); print_obj(exp, 1); printf("\n");
     return 0;
+  } else if (exp->tag == _Closure) {
+    return exp->value.pfn ( env );
   } else if (exp->tag == _Pair) {
-    if (car (exp) ->tag == _Symbol) {
-      if (car(exp) == intern("quote")) {
-        return car(cdr(exp));
-      } else if (car(exp) == intern("cond")) {
-        for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
-          if (eval(car(car(exp)), env)) /* anything not #f */
-            return eval(car(cdr(car(exp))), env);
-        }
-        return 0;
-      } else if (car(exp) == intern("lambda") || car(exp) == intern("λ")) {
-        return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env);
-      } else if (car(exp) == intern("apply")) {
-        return eval(car(cdr(exp)), env)->value.pfn( car(map(cdr(cdr(exp)),eval,env)) );
-      } else if (car(exp) == intern("let")) {
-        return eval(let_macro(exp), env);
-      } else {
-        return eval( cons(eval(car(exp), env), cdr(exp)), env);
-      }
-    } else if (car(exp)->tag == _Closure) {
-      env = bind_append(car(exp)->value.closure.params, /* named params */
-                        map(cdr(exp), eval, env),       /* evaluate params */
-                        car(exp)->value.closure.env);
-      return eval( car(exp)->value.closure.body, env );
-    } else if (car(exp)->tag == _Primitive) {
-      return car(exp)->value.pfn ( map(cdr(exp), eval, env)  );
-    } else if (car(exp)->tag == _Pair) {
-      return eval(cons(eval(car(exp), env), cdr(exp)), env);
-    }
+    return apply(eval(car(exp), env), exp, env);
   }
-  puts("cannot evaluate expression");
+  puts("cannot evaluate expression: "); print_obj(exp, 1); printf("\n");
   return 0;
 }
 
@@ -211,7 +244,14 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
               cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
-              cons (cons(intern("null"), cons(0,0)), 0))))))))));
+              cons (cons(intern("null"), cons(0,0)),
+              cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
+              cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
+              cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
+              cons (cons(intern("cond"), cons(newsyntax(fcond), 0)),
+              cons (cons(intern("let"), cons(newsyntax(flet), 0)),
+              cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
+               0))))))))))))))));
   look = getchar();
   gettoken();
   print_obj( eval(getobj(), env), 1 );
