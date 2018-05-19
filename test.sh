@@ -71,6 +71,7 @@ check-file-ok examples/lambda-logic.lisp '(true false true false)'
 check-file-ok examples/ycomb.lisp '(1 2 3)'
 check-file-ok examples/u-comb.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/u-comb-reverse.lisp '(9 8 7 6 5 4 3 2 1)'
+check-file-ok examples/y-comb-reverse.lisp '(9 8 7 6 5 4 3 2 1)'
 
 check-repl-ok 'hello' 'carl'
 check-repl-ok '(quote (write hello))' '(write hello)'
