@@ -73,6 +73,8 @@ check-file-ok examples/u-comb.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/u-comb-reverse.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/y-comb-reverse.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/macro.lisp '(1 2)'
+check-file-ok examples/lambda-rest.lisp '2'
+check-file-ok examples/append.lisp '(1 2 3 4 5 6)'
 
 echo "Passed $SUCCESS of $TOTAL"
 

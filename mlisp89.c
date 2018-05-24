@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define LISP(code) #code
 #define debug(m,e) printf("%s:%d: %s:",__FILE__,__LINE__,m); print_obj(e,1); puts("");
 typedef struct Object {
   enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax } tag;
@@ -187,6 +186,11 @@ Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context)
 Object * bind_append(Object *names, Object *values, Object *tail) {
   Object *head = tail, **args = &head;
   for ( ; values ; values = cdr(values), names = cdr(names) ) {
+    if (car(names) == intern(".")) { /* variadic lambda syntax */
+      names = cdr(names);
+      *args = cons( cons(car(names), cons(values, 0)), tail);
+      break;
+    }
     *args = cons( cons(car(names), cons(car(values), 0)) , tail);
     args = &( (Object *) *args )->value.pair.next;
   }
@@ -226,7 +230,7 @@ Object * eval(Object *exp, Object *env) {
     printf("unbound variable: "); print_obj(exp, 1); printf("\n");
     return 0;
   } else if (exp->tag == _Closure) {
-    return exp->value.pfn ( env );
+    return eval( exp->value.closure.body, env );
   } else if (exp->tag == _Pair) {
     return apply(eval(car(exp), env), exp, env);
   }
