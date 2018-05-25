@@ -134,8 +134,18 @@ void print_obj(Object *ob, int head_of_list) {
   }
 }
 
+Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context) {
+  Object *head = 0, **args = &head;
+  for ( ; list ; list = cdr(list) ) {
+    *args = cons( fn(car(list), context), 0);
+    args = &(*args)->value.pair.next;
+  }
+  return head;
+}
+
 Object * eval(Object *exp, Object *env);
 Object * apply(Object *fun, Object *exp, Object *env);
+Object * _apply(Object *fun, Object *args);
 
 Object *fcons(Object *a)    {  return cons(car(a), car(cdr(a)));  }
 Object *fcar(Object *a)     {  return car(car(a));  }
@@ -147,7 +157,16 @@ Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; 
 Object *freadobj(Object *a) {  look = getchar(); gettoken(); return getobj();  }
 Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
 
-Object *fapply(Object *exp, Object *env) { return apply(eval(car(cdr(exp)), env), cdr(exp), env); }
+Object *fapply(Object *exp, Object *env) {
+  Object *head = 0, **args = &head, *tmp = cdr(cdr(exp));
+  for (  ; cdr(tmp); tmp = cdr(tmp)) {
+    *args = cons( eval(car(tmp), env), 0);
+    args = &(*args)->value.pair.next;
+  }
+  *args = eval(car(tmp), env); /* last argument to apply must be a list */
+  return _apply(eval(car(cdr(exp)), env), head);
+}
+
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
 Object *fcond(Object *exp, Object *env) {
@@ -172,15 +191,6 @@ Object *flet(Object *exp, Object *env) {
     values = &( (Object *) *values )->value.pair.next;
   }
   return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
-}
-
-Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context) {
-  Object *head = 0, **args = &head;
-  for ( ; list ; list = cdr(list) ) {
-    *args = cons( fn(car(list), context), 0);
-    args = &( (Object *) *args )->value.pair.next;
-  }
-  return head;
 }
 
 Object * bind_append(Object *names, Object *values, Object *tail) {

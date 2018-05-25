@@ -1,8 +1,8 @@
 (let ((Y (lambda (fn)
             ((lambda (h) (h h))
                (lambda (g)
-                 (fn (lambda (x y)
-                    ((g g) x y))))))))
+                 (fn (lambda (x . y)
+                    (apply (g g) (cons x y)))))))))
 
    (let ((append (Y (lambda(f)
                        (lambda (l1 l2)
