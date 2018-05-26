@@ -7,10 +7,10 @@
            ((quote t)
               ((lambda (args)
                 ((lambda (evlist)
-                    (write (cons fn (evlist evlist args null))))
+                    (write (cons fn (evlist evlist args (quote ())))))
                   (lambda (evlist^ e1 evargs)
                     (cond
-                      ((null? e1)  null)
+                      ((null? e1)  (quote ()))
                       ((quote t) (cons (car e1)
                                     (evlist^ evlist^ (cdr e1) evargs)))))))
               (cdr exp1)))))

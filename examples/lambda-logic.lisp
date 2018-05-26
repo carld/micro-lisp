@@ -1,6 +1,6 @@
 ((lambda (true false and or not if-then-else write-true write-false test-1 test-2 test-3 test-4)
    ((lambda (result-1 result-2 result-3 result-4)
-     (cons result-1 (cons result-2 (cons result-3 (cons result-4 null)))))
+     (cons result-1 (cons result-2 (cons result-3 (cons result-4 (quote ()))))))
      (((test-1 true false and or) write-true write-false))
      (((test-2 true false and or) write-true write-false))
      (((test-3 true false and or) write-true write-false))

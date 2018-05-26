@@ -3,7 +3,7 @@
 
  (lambda (list)
    ((lambda (rev)
-      (rev rev null list))
+      (rev rev (quote ()) list))
     (lambda (rev^ a l)
       (cond
         ((null? l) a)

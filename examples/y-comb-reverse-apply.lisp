@@ -4,9 +4,10 @@
                  (fn (lambda (x . args)
                     (apply (g g) (cons x args)))))))))
 
-   (let ((reverse (Y (lambda(f)
+   (let ((reverse (lambda(list-input)
+                    ((Y (lambda(reverse-recursive)
                        (lambda (a l)
                          (cond ((null? l) a)
-                               ((quote t) (f (cons (car l) a) (cdr l)))))))))
+                               ((quote t) (reverse-recursive (cons (car l) a) (cdr l))))))) (quote ()) list-input))))
 
-      (reverse null (quote (1 2 3 4 5 6 7 8 9)))))
+      (reverse (quote (1 2 3 4 5 6 7 8 9)))))

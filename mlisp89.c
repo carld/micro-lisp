@@ -5,11 +5,12 @@
 #include <string.h>
 #define debug(m,e) printf("%s:%d: %s:",__FILE__,__LINE__,m); print_obj(e,1); puts("");
 typedef struct Object {
-  enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax } tag;
+  enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax, _Char } tag;
   union Value {
+    int ch;
     const char * string;
-    struct Object * (*pfn) (struct Object *);
-    struct Object * (*psyn) (struct Object *, struct Object *);
+    struct Object * (*pfn)   (struct Object *);
+    struct Object * (*psyn)  (struct Object *, struct Object *);
     struct List {
       struct Object * next;
       struct Object * data;
@@ -22,28 +23,25 @@ typedef struct Object {
   } value;
 } Object;
 Object * symbols = 0;
-static int look; /* look ahead character */
+int look; /* look ahead character */
 #define SYMBOL_MAX  32
-static char token[SYMBOL_MAX]; /* token */
+char token[SYMBOL_MAX]; /* token */
 int is_space(char x)  { return x == ' ' || x == '\n'; }
 int is_parens(char x) { return x == '(' || x == ')'; }
-Object *car(Object *x) { return x ? x->value.pair.data : 0; }
-Object *cdr(Object *x) { return x ? x->value.pair.next : 0; }
-static void gettoken() {
+
+void lookahead() { look = getchar(); }
+void gettoken() {
   int index = 0;
-  while(is_space(look)) { look = getchar(); }
+  while(is_space(look)) { lookahead(); }
   if (is_parens(look)) {
-    token[index++] = look;  look = getchar();
+    token[index++] = look;  lookahead();
   } else {
     while(index < SYMBOL_MAX - 1 && look != EOF && !is_space(look) && !is_parens(look)) {
-      token[index++] = look;  look = getchar();
+      token[index++] = look;  lookahead();
     }
   }
   token[index] = '\0';
 }
-
-#define e_true     cons(intern("quote"), cons(intern("t"), 0))
-#define e_false    0
 
 Object * tagalloc(int type) {
   Object *obj = calloc( 1, sizeof (Object) );
@@ -87,6 +85,15 @@ Object * newmacro( Object *params, Object *body, Object *env ) {
   return obj;
 }
 
+Object * newchar(char ch) {
+  Object *obj = tagalloc(_Char);
+  obj->value.ch = ch;
+  return obj;
+}
+
+Object *car(Object *x) { return x ? x->value.pair.data : 0; }
+Object *cdr(Object *x) { return x ? x->value.pair.next : 0; }
+
 Object * intern(const char *sym) {
   Object *_pair = symbols;
   for ( ; _pair ; _pair = cdr(_pair))
@@ -106,14 +113,14 @@ Object * getobj() {
 Object * getlist() {
   Object *tmp;
   gettoken();
-  if (token[0] == ')') return (Object *) NULL;
+  if (token[0] == ')') return (Object *) 0;
   tmp = getobj();
   return cons(tmp, getlist());
 }
 
 void print_obj(Object *ob, int head_of_list) {
   if (ob == 0) {
-    printf("null");
+    printf("()");
   } else if (ob->tag == _Symbol) {
     printf("%s", ob->value.string);
   } else if (ob->tag == _Pair) {
@@ -131,6 +138,8 @@ void print_obj(Object *ob, int head_of_list) {
     }
   } else if (ob->tag == _Closure) {
     printf("<CLOSURE>");
+  } else if (ob->tag == _Char) {
+    printf("%c", ob->value.ch);
   }
 }
 
@@ -144,18 +153,22 @@ Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context)
 }
 
 Object * eval(Object *exp, Object *env);
-Object * apply(Object *fun, Object *exp, Object *env);
-Object * _apply(Object *fun, Object *args);
+Object * apply(Object *fun, Object *args);
+
+#define e_true     intern("#t")
+#define e_false    0
 
 Object *fcons(Object *a)    {  return cons(car(a), car(cdr(a)));  }
 Object *fcar(Object *a)     {  return car(car(a));  }
 Object *fcdr(Object *a)     {  return cdr(car(a));  }
-Object *feq(Object *a)      {  return car(a) == car(cdr(a)) ? (Object *) e_true : e_false;  }
+Object *feq(Object *a)      {  return car(a) == car(cdr(a)) ? e_true : e_false;  }
 Object *fpair(Object *a)    {  return car(a)->tag == _Pair  ? e_true : e_false;  }
 Object *fatom(Object *a)    {  return car(a)->tag == _Symbol  ? e_true : e_false;  }
 Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; }
-Object *freadobj(Object *a) {  look = getchar(); gettoken(); return getobj();  }
+Object *freadobj(Object *a) {  lookahead(); gettoken(); return getobj();  }
 Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
+Object *fputch(Object *a)   {  putchar(car(a)->value.ch); return e_true; }
+Object *fgetch(Object *a)   {  return newchar(getchar()); }
 
 Object *fapply(Object *exp, Object *env) {
   Object *head = 0, **args = &head, *tmp = cdr(cdr(exp));
@@ -164,7 +177,7 @@ Object *fapply(Object *exp, Object *env) {
     args = &(*args)->value.pair.next;
   }
   *args = eval(car(tmp), env); /* last argument to apply must be a list */
-  return _apply(eval(car(cdr(exp)), env), head);
+  return apply(eval(car(cdr(exp)), env), head);
 }
 
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
@@ -197,8 +210,7 @@ Object * bind_append(Object *names, Object *values, Object *tail) {
   Object *head = tail, **args = &head;
   for ( ; values ; values = cdr(values), names = cdr(names) ) {
     if (car(names) == intern(".")) { /* variadic lambda syntax */
-      names = cdr(names);
-      *args = cons( cons(car(names), cons(values, 0)), tail);
+      *args = cons( cons(car(cdr(names)), cons(values, 0)), tail);
       break;
     }
     *args = cons( cons(car(names), cons(car(values), 0)) , tail);
@@ -207,28 +219,15 @@ Object * bind_append(Object *names, Object *values, Object *tail) {
   return head;
 }
 
-Object * _apply(Object *fun, Object *args) {
+Object * apply(Object *fun, Object *args) {
   if (fun->tag == _Primitive) {
     return fun->value.pfn(args);
   } else if (fun->tag == _Closure) {
     Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
     return eval( fun->value.closure.body, env );
   }
-  puts("not applicable: "); print_obj(fun, 1); printf("\n");
+  puts("cannot apply: "); print_obj(fun, 1); printf("\n");
   return 0;
-}
-
-Object * apply(Object *fun, Object *exp, Object *env) {
-  Object *args = cdr(exp);
-  if (fun->tag == _Macro) {
-    Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
-    return eval( fun->value.closure.body, env );
-  } else if (fun->tag == _Syntax) {
-    return fun->value.psyn(exp, env);
-  } else {
-    Object *arg_values = map(args, eval, env);
-    return _apply(fun, arg_values);
-  }
 }
 
 Object * eval(Object *exp, Object *env) {
@@ -237,14 +236,22 @@ Object * eval(Object *exp, Object *env) {
       if (exp == car(car(env)))
         return car(cdr(car(env)));
     }
-    printf("unbound variable: "); print_obj(exp, 1); printf("\n");
+    printf("cannot lookup: "); print_obj(exp, 1); printf("\n");
     return 0;
   } else if (exp->tag == _Closure) {
     return eval( exp->value.closure.body, env );
-  } else if (exp->tag == _Pair) {
-    return apply(eval(car(exp), env), exp, env);
+  } else if (exp->tag == _Pair) { /* prepare for apply */
+    Object *fun = eval(car(exp), env);
+    if (fun->tag == _Macro) {
+      Object *env = bind_append(fun->value.closure.params, cdr(exp), fun->value.closure.env);
+      return eval(fun->value.closure.body, env);
+    } else if (fun->tag == _Syntax) {
+      return fun->value.psyn(exp, env);
+    } else {
+      return apply(fun, map(cdr(exp), eval, env));
+    }
   }
-  puts("cannot evaluate expression: "); print_obj(exp, 1); printf("\n");
+  puts("cannot evaluate: "); print_obj(exp, 1); printf("\n");
   return 0;
 }
 
@@ -258,15 +265,14 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
               cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
-              cons (cons(intern("null"), cons(0,0)),
               cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
               cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
               cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
               cons (cons(intern("cond"), cons(newsyntax(fcond), 0)),
               cons (cons(intern("let"), cons(newsyntax(flet), 0)),
               cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
-               0))))))))))))))));
-  look = getchar();
+               0)))))))))))))));
+  lookahead();
   gettoken();
   print_obj( eval(getobj(), env), 1 );
   printf("\n");

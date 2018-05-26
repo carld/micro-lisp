@@ -3,7 +3,7 @@
       (assq assq e1 env1))
    (lambda (assq^ e1 env1)
       (cond
-        ((null? env1) null)
+        ((null? env1) (quote ()))
         ((eq? e1 (car (car env1)))
             (car (cdr (car env1))))
         ((quote t)  (assq^ assq^ e1 (cdr env1)))))))
