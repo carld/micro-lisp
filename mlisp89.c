@@ -159,7 +159,7 @@ Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
 
 Object *fapply(Object *exp, Object *env) {
   Object *head = 0, **args = &head, *tmp = cdr(cdr(exp));
-  for (  ; cdr(tmp); tmp = cdr(tmp)) {
+  for (  ; cdr(tmp); tmp = cdr(tmp) ) {
     *args = cons( eval(car(tmp), env), 0);
     args = &(*args)->value.pair.next;
   }
@@ -186,9 +186,9 @@ Object *flet(Object *exp, Object *env) {
   Object *names_head = 0, **names = &names_head, *values_head = 0, **values = &values_head, *body = car(cdr(cdr(exp)));
   for ( exp = car(cdr(exp)); exp ; exp = cdr(exp) ) {
     *names = cons(car(car(exp)), 0);
-    names = &( (Object *) *names )->value.pair.next;
+    names = &( *names )->value.pair.next;
     *values = cons(car(cdr(car(exp))), 0);
-    values = &( (Object *) *values )->value.pair.next;
+    values = &( *values )->value.pair.next;
   }
   return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
 }
@@ -202,7 +202,7 @@ Object * bind_append(Object *names, Object *values, Object *tail) {
       break;
     }
     *args = cons( cons(car(names), cons(car(values), 0)) , tail);
-    args = &( (Object *) *args )->value.pair.next;
+    args = &( *args )->value.pair.next;
   }
   return head;
 }

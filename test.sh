@@ -76,6 +76,7 @@ check-file-ok examples/y-comb-reverse-apply.lisp '(9 8 7 6 5 4 3 2 1)'
 check-file-ok examples/macro.lisp '(1 2)'
 check-file-ok examples/lambda-rest.lisp '2'
 check-file-ok examples/append.lisp '(1 2 3 4 5 6)'
+check-file-ok examples/curry.lisp '(HEAD TAIL)'
 
 echo "Passed $SUCCESS of $TOTAL"
 

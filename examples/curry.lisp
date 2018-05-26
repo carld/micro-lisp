@@ -2,7 +2,7 @@
             ((lambda (h) (h h))
                (lambda (g)
                  (fn (lambda (x . y)
-                    (apply (g g) (cons x y)))))))))
+                    (apply (g g) x y))))))))
 
    (let ((append (Y (lambda (recursive-append)
                        (lambda (l1 l2)
@@ -15,4 +15,4 @@
                       (apply fn (append args x))))))
 
         (let ((cons-HEAD (curry cons (quote HEAD))))
-          (cons-HEAD (quote (TAIL)))))))
+          (cons-HEAD (quote ((TAIL))) )))))
