@@ -171,7 +171,7 @@ Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
 Object *fcond(Object *exp, Object *env) {
   for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
-    if (eval(car(car(exp)), env)) /* anything not #f */
+    if (eval(car(car(exp)), env) != e_false) /* anything not false is true */
       return eval(car(cdr(car(exp))), env);
   }
   return 0;
