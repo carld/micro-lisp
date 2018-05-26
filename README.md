@@ -67,5 +67,5 @@ A `.gdbinit` file sets the target, breakpoints and runs the executable. Simply r
 
 Pull requests welcome.
 
-[![asciicast](https://asciinema.org/a/HbNmch4GVH9jXpeY3I6yvfqPF.png)](https://asciinema.org/a/HbNmch4GVH9jXpeY3I6yvfqPF)
+[![asciicast](https://asciinema.org/a/HbNmch4GVH9jXpeY3I6yvfqPF.png)](https://asciinema.org/a/HbNmch4GVH9jXpeY3I6yvfqPF?autoplay=1)
 
