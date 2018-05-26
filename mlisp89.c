@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define debug(m,e) printf("%s:%d: %s:",__FILE__,__LINE__,m); print_obj(e,1); puts("");
+#define debug(m,e) printf("%s:%d: %s:",__FILE__,__LINE__,m); print_obj(e); puts("");
 typedef struct Object {
-  enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax, _Char } tag;
+  enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax, _Char, _String, _Integer } tag;
   union Value {
-    int ch;
+    int mword;
     const char * string;
     struct Object * (*pfn)   (struct Object *);
     struct Object * (*psyn)  (struct Object *, struct Object *);
@@ -24,19 +24,30 @@ typedef struct Object {
 } Object;
 Object * symbols = 0;
 int look; /* look ahead character */
-#define SYMBOL_MAX  32
-char token[SYMBOL_MAX]; /* token */
+#define TOKEN_MAX 32
+char token[TOKEN_MAX]; /* token */
 int is_space(char x)  { return x == ' ' || x == '\n'; }
 int is_parens(char x) { return x == '(' || x == ')'; }
-
+int is_quote(char x)  { return x == '"'; }
+int is_digit(char x)  { return x >= '0' && x <= '9'; }
 void lookahead() { look = getchar(); }
 void gettoken() {
   int index = 0;
   while(is_space(look)) { lookahead(); }
   if (is_parens(look)) {
     token[index++] = look;  lookahead();
-  } else {
-    while(index < SYMBOL_MAX - 1 && look != EOF && !is_space(look) && !is_parens(look)) {
+  } else if (is_quote(look)) { /* string */
+    token[index++] = look;  lookahead();
+    while(index < TOKEN_MAX - 1 && look != EOF && !is_quote(look)) {
+      token[index++] = look; lookahead();
+    }
+    token[index++] = look;  lookahead();
+  } else if (is_digit(look)) { /* number */
+    while(index < TOKEN_MAX - 1 && look != EOF && is_digit(look)) {
+      token[index++] = look; lookahead();
+    }
+  } else { /* symbol */
+    while(index < TOKEN_MAX - 1 && look != EOF && !is_space(look) && !is_parens(look)) {
       token[index++] = look;  lookahead();
     }
   }
@@ -58,6 +69,20 @@ Object * cons(Object * _car, Object * _cdr) {
 Object * newsymbol(const char *str) {
   Object *obj = tagalloc(_Symbol);
   obj->value.string = strdup(str);
+  return obj;
+}
+
+Object *newnumber(const char * num) {
+  Object *obj = tagalloc(_Integer);
+  obj->value.mword = atoi(num);
+  return obj;
+}
+
+Object * newstring(const char *str) {
+  Object *obj = tagalloc(_String);
+  int length = strlen(str);
+  char * string = strdup(str+1); /* trim quotes */ string[length-2] = '\0';
+  obj->value.string = string;
   return obj;
 }
 
@@ -87,7 +112,7 @@ Object * newmacro( Object *params, Object *body, Object *env ) {
 
 Object * newchar(char ch) {
   Object *obj = tagalloc(_Char);
-  obj->value.ch = ch;
+  obj->value.mword = ch;
   return obj;
 }
 
@@ -97,7 +122,7 @@ Object *cdr(Object *x) { return x ? x->value.pair.next : 0; }
 Object * intern(const char *sym) {
   Object *_pair = symbols;
   for ( ; _pair ; _pair = cdr(_pair))
-    if (strncmp(sym, car(_pair)->value.string, SYMBOL_MAX)==0)
+    if (strncmp(sym, car(_pair)->value.string, TOKEN_MAX)==0)
       return car(_pair);
   symbols = cons(newsymbol(sym), symbols);
   return car(symbols);
@@ -107,6 +132,8 @@ Object * getlist();
 
 Object * getobj() {
   if (token[0] == '(') return getlist();
+  if (is_quote(token[0])) return newstring(token);
+  if (is_digit(token[0])) return newnumber(token);
   return intern(token);
 }
 
@@ -118,28 +145,38 @@ Object * getlist() {
   return cons(tmp, getlist());
 }
 
-void print_obj(Object *ob, int head_of_list) {
+void print_obj(Object *ob);
+
+void print_obj_list(Object *ob) {
+  print_obj(car(ob));
+  if (cdr(ob) != 0) {
+    if(cdr(ob)->tag == _Pair) {
+      printf(" ");
+      print_obj_list(cdr(ob));
+    } else {
+      printf(" . ");
+      print_obj(cdr(ob));
+    }
+  }
+}
+
+void print_obj(Object *ob) {
   if (ob == 0) {
     printf("()");
   } else if (ob->tag == _Symbol) {
     printf("%s", ob->value.string);
   } else if (ob->tag == _Pair) {
-    if (head_of_list) printf("(");
-    print_obj(car(ob), 1);
-    if (cdr(ob) == 0) {
-      printf(")");
-    } else if(cdr(ob)->tag == _Pair) {
-      printf(" ");
-      print_obj(cdr(ob), 0);
-    } else {
-      printf(" . ");
-      print_obj(cdr(ob), 0);
-      printf(")");
-    }
+    printf("(");
+    print_obj_list(ob);
+    printf(")");
   } else if (ob->tag == _Closure) {
     printf("<CLOSURE>");
   } else if (ob->tag == _Char) {
-    printf("%c", ob->value.ch);
+    printf("%c", ob->value.mword);
+  } else if (ob->tag == _String) {
+    printf("\"%s\"", ob->value.string);
+  } else if (ob->tag == _Integer) {
+    printf("%d", ob->value.mword);
   }
 }
 
@@ -166,9 +203,21 @@ Object *fpair(Object *a)    {  return car(a)->tag == _Pair  ? e_true : e_false; 
 Object *fatom(Object *a)    {  return car(a)->tag == _Symbol  ? e_true : e_false;  }
 Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; }
 Object *freadobj(Object *a) {  lookahead(); gettoken(); return getobj();  }
-Object *fwriteobj(Object *a){  print_obj(car(a), 1); puts(""); return e_true;  }
-Object *fputch(Object *a)   {  putchar(car(a)->value.ch); return e_true; }
+Object *fwriteobj(Object *a){  print_obj(car(a)); puts(""); return e_true;  }
+Object *fputch(Object *a)   {  putchar(car(a)->value.mword); return e_true; }
 Object *fgetch(Object *a)   {  return newchar(getchar()); }
+#define DEFMATH(op,name) \
+Object * name (Object *args) { \
+  Object *result = tagalloc(_Integer); \
+  result->value.mword = car(args)->value.mword; \
+  for ( args = cdr(args); args; args = cdr(args)) \
+    result->value.mword = result->value.mword op car(args)->value.mword; \
+  return result; \
+}
+DEFMATH(+,fadd)
+DEFMATH(-,fsub)
+DEFMATH(*,fmul)
+DEFMATH(/,fdiv)
 
 Object *fapply(Object *exp, Object *env) {
   Object *head = 0, **args = &head, *tmp = cdr(cdr(exp));
@@ -226,7 +275,7 @@ Object * apply(Object *fun, Object *args) {
     Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
     return eval( fun->value.closure.body, env );
   }
-  puts("cannot apply: "); print_obj(fun, 1); printf("\n");
+  puts("cannot apply: "); print_obj(fun); printf("\n");
   return 0;
 }
 
@@ -236,8 +285,12 @@ Object * eval(Object *exp, Object *env) {
       if (exp == car(car(env)))
         return car(cdr(car(env)));
     }
-    printf("cannot lookup: "); print_obj(exp, 1); printf("\n");
+    printf("cannot lookup: "); print_obj(exp); printf("\n");
     return 0;
+  } else if (exp->tag == _Integer) {
+    return exp;
+  } else if (exp->tag == _String) {
+    return exp;
   } else if (exp->tag == _Closure) {
     return eval( exp->value.closure.body, env );
   } else if (exp->tag == _Pair) { /* prepare for apply */
@@ -251,7 +304,7 @@ Object * eval(Object *exp, Object *env) {
       return apply(fun, map(cdr(exp), eval, env));
     }
   }
-  puts("cannot evaluate: "); print_obj(exp, 1); printf("\n");
+  puts("cannot evaluate: "); print_obj(exp); printf("\n");
   return 0;
 }
 
@@ -271,10 +324,14 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("cond"), cons(newsyntax(fcond), 0)),
               cons (cons(intern("let"), cons(newsyntax(flet), 0)),
               cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
-               0)))))))))))))));
+              cons (cons(intern("+"), cons(newprimop(fadd), 0)),
+              cons (cons(intern("-"), cons(newprimop(fsub), 0)),
+              cons (cons(intern("*"), cons(newprimop(fmul), 0)),
+              cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
+               0)))))))))))))))))));
   lookahead();
   gettoken();
-  print_obj( eval(getobj(), env), 1 );
+  print_obj( eval(getobj(), env) );
   printf("\n");
   return 0;
 }
