@@ -51,7 +51,7 @@ void gettoken() {
   while(is_space(look)) { lookahead(); }
   if (is_parens(look)) {
     token[index++] = look;  lookahead();
-  } else if (is_syntaxquote(look)) {
+  } else if (is_syntaxquote(look)) { /* quoting, quasiquoting */
     token[index++] = look; lookahead();
   } else if (is_doublequote(look)) { /* string */
     token[index++] = look;  lookahead();
@@ -251,6 +251,9 @@ Object *fapply(Object *exp, Object *env) {
 }
 
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
+Object *funquote(Object *exp, Object *env){  return car(cdr(exp)); }
+Object *fquasiquote(Object *exp, Object *env){  return car(cdr(exp)); }
+
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
 Object *fcond(Object *exp, Object *env) {
   for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
@@ -259,7 +262,12 @@ Object *fcond(Object *exp, Object *env) {
   }
   return 0;
 }
-
+Object *fif(Object *exp, Object *env) {
+    if (eval(car(cdr(exp)), env) != e_false) /* anything not false is true */
+      return eval(car(cdr(cdr(exp))), env);
+    else
+      return eval(car(cdr(cdr(cdr(exp)))), env);
+}
 Object *fmacro(Object *exp, Object *env) {
   Object *macro = eval(car(cdr(exp)), env);
   return newmacro(macro->value.closure.params, macro->value.closure.body, macro->value.closure.env);
@@ -305,10 +313,10 @@ Object * eval(Object *exp, Object *env) {
     return eval( exp->value.closure.body, env );
   } else if (exp->tag == _Pair) { /* prepare for apply */
     Object *fun = eval(car(exp), env);
-    if (fun->tag == _Macro) {
+    if (fun->tag == _Macro) { /* expand and evaluate */
       Object *env = bind_append(fun->value.closure.params, cdr(exp), fun->value.closure.env);
       return eval(fun->value.closure.body, env);
-    } else if (fun->tag == _Syntax) {
+    } else if (fun->tag == _Syntax) { /* special forms */
       return fun->value.psyn(exp, env);
     } else {
       return apply(fun, map(cdr(exp), eval, env));
@@ -316,10 +324,6 @@ Object * eval(Object *exp, Object *env) {
   }
   puts("cannot evaluate: "); print_obj(exp); printf("\n");
   return 0;
-}
-
-Object *fsinglequote(Object *exp, Object *env) {
-  return cons(intern("quote"), cdr(exp));
 }
 
 Object *flet(Object *exp, Object *env) {
@@ -334,21 +338,32 @@ Object *flet(Object *exp, Object *env) {
 }
 
 #define LISP(code) #code
-static const char *Y_src = LISP(
-  (macro (lambda (fn)
-              ((lambda (h) (h h))
-                (lambda (g)
-                  (fn (lambda (x . args)
-                      (apply (g g) (cons x args))))))))
-);
-static const char *quote_src = LISP(
-  (macro (lambda (exp)
-    (cons (quote quote) (cons exp))))
-);
-Object *extend_env(Object *env, const char *name, const char *src) {
+static const char * env_src[][2]  = {
+  { "Y", LISP((macro (lambda (fn)
+                      ((lambda (h) (h h))
+                        (lambda (g)
+                          (fn (lambda (x . args)
+                              (apply (g g) (cons x args))))))))) },
+  { "'", LISP((macro (lambda (exp)
+                (cons (quote quote) (cons exp (quote ())))))) },
+  { ",", LISP((macro (lambda (exp)
+                (cons (quote unquote) (cons exp (quote ())))))) },
+  { "`", LISP((macro (lambda (exp)
+                (cons (quote quasiquote) (cons exp (quote ())))))) },
+
+  { 0, 0 }
+};
+
+Object *extend_env1(Object *env, const char *name, const char *src) {
   stream = funopen(&src, freadmem, NULL, NULL, NULL);
   lookahead(); gettoken();
   return cons(cons(intern(name), cons(eval(getobj(), env), 0)), env);
+}
+
+Object *extend_env(Object *env, const char *src[][2]) {
+  for ( ; (*src)[0] ; src++)
+    env = extend_env1(env, (*src)[0], (*src)[1]);
+  return env;
 }
 
 int main(int argc, char *argv[]) {
@@ -363,17 +378,19 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
               cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
               cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
-              cons (cons(intern("'"), cons(newsyntax(fsinglequote), 0)),
+              cons (cons(intern("unquote"), cons(newsyntax(funquote), 0)),
+              cons (cons(intern("quasiquote"), cons(newsyntax(fquasiquote), 0)),
               cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
               cons (cons(intern("cond"), cons(newsyntax(fcond), 0)),
+              cons (cons(intern("if"), cons(newsyntax(fif), 0)),
               cons (cons(intern("let"), cons(newsyntax(flet), 0)),
               cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
               cons (cons(intern("+"), cons(newprimop(fadd), 0)),
               cons (cons(intern("-"), cons(newprimop(fsub), 0)),
               cons (cons(intern("*"), cons(newprimop(fmul), 0)),
               cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
-               0))))))))))))))))))));
-  env = extend_env(env, "Y", Y_src);
+               0))))))))))))))))))))));
+  env = extend_env(env, env_src);
   print_obj(env); printf("\n");
   stream = stdin;
   lookahead(); gettoken();
