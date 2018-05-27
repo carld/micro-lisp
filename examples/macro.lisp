@@ -1,3 +1,3 @@
-(let ((f (macro (lambda ()
-                  (cons (quote 1) (cons (quote 2) (quote ())))))))
-   (f))
+(let ((identity (macro (lambda (x)
+                  x))))
+   (identity this))

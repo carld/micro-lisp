@@ -151,6 +151,7 @@ Object * getobj() {
   if (token[0] == '(') return getlist();
   if (is_doublequote(token[0])) return newstring(token);
   if (is_digit(token[0])) return newnumber(token);
+  /* TODO: reader macros: ' */
   return intern(token);
 }
 
@@ -220,6 +221,7 @@ Object *fcons(Object *a)    {  return cons(car(a), car(cdr(a)));  }
 Object *fcar(Object *a)     {  return car(car(a));  }
 Object *fcdr(Object *a)     {  return cdr(car(a));  }
 Object *feq(Object *a)      {  return car(a) == car(cdr(a)) ? e_true : e_false;  }
+Object *fnot(Object *a)     {  return car(a) == e_false ? e_true : e_false;  }
 Object *fpair(Object *a)    {  return car(a)->tag == _Pair  ? e_true : e_false;  }
 Object *fatom(Object *a)    {  return car(a)->tag == _Symbol  ? e_true : e_false;  }
 Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; }
@@ -251,10 +253,15 @@ Object *fapply(Object *exp, Object *env) {
 }
 
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
-Object *funquote(Object *exp, Object *env){  return car(cdr(exp)); }
-Object *fquasiquote(Object *exp, Object *env){  return car(cdr(exp)); }
 
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
+
+Object *fmacro(Object *exp, Object *env) {
+  Object *lambda = eval(car(cdr(exp)), env);
+  if (lambda->tag != _Closure) { printf("cannot make macro from non-lambda"); }
+  return newmacro(lambda->value.closure.params, lambda->value.closure.body, lambda->value.closure.env);
+}
+
 Object *fcond(Object *exp, Object *env) {
   for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
     if (eval(car(car(exp)), env) != e_false) /* anything not false is true */
@@ -268,13 +275,13 @@ Object *fif(Object *exp, Object *env) {
     else
       return eval(car(cdr(cdr(cdr(exp)))), env);
 }
-Object *fmacro(Object *exp, Object *env) {
-  Object *macro = eval(car(cdr(exp)), env);
-  return newmacro(macro->value.closure.params, macro->value.closure.body, macro->value.closure.env);
-}
 
 Object * bind_append(Object *names, Object *values, Object *tail) {
   Object *head = tail, **args = &head;
+  if (names == 0) return tail;
+  if (names->tag == _Symbol) { /* (lambda args (do args)) */
+    return cons( cons(names, cons(values, 0)), tail);
+  }
   for ( ; values ; values = cdr(values), names = cdr(names) ) {
     if (car(names) == intern(".")) { /* variadic lambda syntax */
       *args = cons( cons(car(cdr(names)), cons(values, 0)), tail);
@@ -314,8 +321,8 @@ Object * eval(Object *exp, Object *env) {
   } else if (exp->tag == _Pair) { /* prepare for apply */
     Object *fun = eval(car(exp), env);
     if (fun->tag == _Macro) { /* expand and evaluate */
-      Object *env = bind_append(fun->value.closure.params, cdr(exp), fun->value.closure.env);
-      return eval(fun->value.closure.body, env);
+      Object *env0 = bind_append(fun->value.closure.params, cdr(exp), fun->value.closure.env);
+      return eval( fun->value.closure.body, env0 );
     } else if (fun->tag == _Syntax) { /* special forms */
       return fun->value.psyn(exp, env);
     } else {
@@ -339,18 +346,21 @@ Object *flet(Object *exp, Object *env) {
 
 #define LISP(code) #code
 static const char * env_src[][2]  = {
-  { "Y", LISP((macro (lambda (fn)
+  { "Y", LISP((lambda (fn)
                       ((lambda (h) (h h))
                         (lambda (g)
-                          (fn (lambda (x . args)
-                              (apply (g g) (cons x args))))))))) },
-  { "'", LISP((macro (lambda (exp)
-                (cons (quote quote) (cons exp (quote ())))))) },
-  { ",", LISP((macro (lambda (exp)
-                (cons (quote unquote) (cons exp (quote ())))))) },
-  { "`", LISP((macro (lambda (exp)
-                (cons (quote quasiquote) (cons exp (quote ())))))) },
-
+                          (fn (lambda args
+                              (apply (g g) args))))))) },
+  { "append", LISP((Y (lambda (append0)
+                          (lambda (x y)
+                             (cond ((null? x) y)
+                                   ((quote #t)   (cons (car x) (append0 (cdr x) y)))))))) },
+  { "quasiquote", LISP((macro
+                        (Y (lambda (expand-qq)
+                             (lambda (exp)
+                                 (cond ((pair? exp)   (cond ((eq? (car exp) (quote unquote))  (cons (car (cdr exp)) (cdr (cdr exp))))
+                                                            ((quote #t) (cons (expand-qq (car exp)) (expand-qq (cdr exp))))))
+                                       ((quote #t)    exp)   )))))) },
   { 0, 0 }
 };
 
@@ -371,6 +381,7 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("cdr"), cons(newprimop(fcdr), 0)),
               cons (cons(intern("cons"), cons(newprimop(fcons), 0)),
               cons (cons(intern("eq?"), cons(newprimop(feq), 0)),
+              cons (cons(intern("not"), cons(newprimop(fnot), 0)),
               cons (cons(intern("pair?"), cons(newprimop(fpair), 0)),
               cons (cons(intern("symbol?"), cons(newprimop(fatom), 0)),
               cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
@@ -378,8 +389,6 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
               cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
               cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
-              cons (cons(intern("unquote"), cons(newsyntax(funquote), 0)),
-              cons (cons(intern("quasiquote"), cons(newsyntax(fquasiquote), 0)),
               cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
               cons (cons(intern("cond"), cons(newsyntax(fcond), 0)),
               cons (cons(intern("if"), cons(newsyntax(fif), 0)),
@@ -389,7 +398,7 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("-"), cons(newprimop(fsub), 0)),
               cons (cons(intern("*"), cons(newprimop(fmul), 0)),
               cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
-               0))))))))))))))))))))));
+               0)))))))))))))))))))));
   env = extend_env(env, env_src);
   print_obj(env); printf("\n");
   stream = stdin;
