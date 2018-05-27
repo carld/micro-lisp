@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-LISP="${1:-./micro-flisp}"
+LISP="${1:-./mlisp89}"
 TOTAL=0
 SUCCESS=0
 

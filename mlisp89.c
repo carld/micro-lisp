@@ -22,23 +22,40 @@ typedef struct Object {
     } closure;
   } value;
 } Object;
-Object * symbols = 0;
-int look; /* look ahead character */
+static Object * symbols = 0;
+static int look; /* look ahead character */
 #define TOKEN_MAX 32
-char token[TOKEN_MAX]; /* token */
+static char token[TOKEN_MAX]; /* token */
 int is_space(char x)  { return x == ' ' || x == '\n'; }
 int is_parens(char x) { return x == '(' || x == ')'; }
-int is_quote(char x)  { return x == '"'; }
+int is_syntaxquote(char x)  { return x == '\'' || x == '`' || x == ','; }
+int is_doublequote(char x)  { return x == '"'; }
 int is_digit(char x)  { return x >= '0' && x <= '9'; }
-void lookahead() { look = getchar(); }
+
+static FILE *stream = 0;
+
+int freadmem(void *cookie, char *buf, int size) {  /* funopen enables parsing of memory as well as files */
+  char **position = (char **) cookie,   *mem = * (char **) position;
+  int num_read = 0;
+  for( ; num_read < size && *mem != '\0'; num_read++)
+    *buf++ = *mem++;
+  if (*mem == '\0')   *buf++ = EOF;
+  /* printf("Read %d bytes of %d: %s\n", num_read, size, *position); */
+  *position = mem; /* move the stream pointer */
+  return num_read;
+}
+
+void lookahead() { look = getc(stream); }
 void gettoken() {
   int index = 0;
   while(is_space(look)) { lookahead(); }
   if (is_parens(look)) {
     token[index++] = look;  lookahead();
-  } else if (is_quote(look)) { /* string */
+  } else if (is_syntaxquote(look)) {
+    token[index++] = look; lookahead();
+  } else if (is_doublequote(look)) { /* string */
     token[index++] = look;  lookahead();
-    while(index < TOKEN_MAX - 1 && look != EOF && !is_quote(look)) {
+    while(index < TOKEN_MAX - 1 && look != EOF && !is_doublequote(look)) {
       token[index++] = look; lookahead();
     }
     token[index++] = look;  lookahead();
@@ -132,7 +149,7 @@ Object * getlist();
 
 Object * getobj() {
   if (token[0] == '(') return getlist();
-  if (is_quote(token[0])) return newstring(token);
+  if (is_doublequote(token[0])) return newstring(token);
   if (is_digit(token[0])) return newnumber(token);
   return intern(token);
 }
@@ -166,11 +183,15 @@ void print_obj(Object *ob) {
   } else if (ob->tag == _Symbol) {
     printf("%s", ob->value.string);
   } else if (ob->tag == _Pair) {
-    printf("(");
-    print_obj_list(ob);
-    printf(")");
+    printf("("); print_obj_list(ob); printf(")");
   } else if (ob->tag == _Closure) {
     printf("<CLOSURE>");
+  } else if (ob->tag == _Primitive) {
+    printf("<PRIMOP>");
+  } else if (ob->tag == _Macro) {
+    printf("<MACRO>");
+  } else if (ob->tag == _Syntax) {
+    printf("<SYNTAX>");
   } else if (ob->tag == _Char) {
     printf("%c", ob->value.mword);
   } else if (ob->tag == _String) {
@@ -244,17 +265,6 @@ Object *fmacro(Object *exp, Object *env) {
   return newmacro(macro->value.closure.params, macro->value.closure.body, macro->value.closure.env);
 }
 
-Object *flet(Object *exp, Object *env) {
-  Object *names_head = 0, **names = &names_head, *values_head = 0, **values = &values_head, *body = car(cdr(cdr(exp)));
-  for ( exp = car(cdr(exp)); exp ; exp = cdr(exp) ) {
-    *names = cons(car(car(exp)), 0);
-    names = &( *names )->value.pair.next;
-    *values = cons(car(cdr(car(exp))), 0);
-    values = &( *values )->value.pair.next;
-  }
-  return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
-}
-
 Object * bind_append(Object *names, Object *values, Object *tail) {
   Object *head = tail, **args = &head;
   for ( ; values ; values = cdr(values), names = cdr(names) ) {
@@ -308,6 +318,39 @@ Object * eval(Object *exp, Object *env) {
   return 0;
 }
 
+Object *fsinglequote(Object *exp, Object *env) {
+  return cons(intern("quote"), cdr(exp));
+}
+
+Object *flet(Object *exp, Object *env) {
+  Object *names_head = 0, **names = &names_head, *values_head = 0, **values = &values_head, *body = car(cdr(cdr(exp)));
+  for ( exp = car(cdr(exp)); exp ; exp = cdr(exp) ) {
+    *names = cons(car(car(exp)), 0);
+    names = &( *names )->value.pair.next;
+    *values = cons(car(cdr(car(exp))), 0);
+    values = &( *values )->value.pair.next;
+  }
+  return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
+}
+
+#define LISP(code) #code
+static const char *Y_src = LISP(
+  (macro (lambda (fn)
+              ((lambda (h) (h h))
+                (lambda (g)
+                  (fn (lambda (x . args)
+                      (apply (g g) (cons x args))))))))
+);
+static const char *quote_src = LISP(
+  (macro (lambda (exp)
+    (cons (quote quote) (cons exp))))
+);
+Object *extend_env(Object *env, const char *name, const char *src) {
+  stream = funopen(&src, freadmem, NULL, NULL, NULL);
+  lookahead(); gettoken();
+  return cons(cons(intern(name), cons(eval(getobj(), env), 0)), env);
+}
+
 int main(int argc, char *argv[]) {
   Object *env = cons (cons(intern("car"), cons(newprimop(fcar), 0)),
               cons (cons(intern("cdr"), cons(newprimop(fcdr), 0)),
@@ -320,6 +363,7 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
               cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
               cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
+              cons (cons(intern("'"), cons(newsyntax(fsinglequote), 0)),
               cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
               cons (cons(intern("cond"), cons(newsyntax(fcond), 0)),
               cons (cons(intern("let"), cons(newsyntax(flet), 0)),
@@ -328,9 +372,11 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("-"), cons(newprimop(fsub), 0)),
               cons (cons(intern("*"), cons(newprimop(fmul), 0)),
               cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
-               0)))))))))))))))))));
-  lookahead();
-  gettoken();
+               0))))))))))))))))))));
+  env = extend_env(env, "Y", Y_src);
+  print_obj(env); printf("\n");
+  stream = stdin;
+  lookahead(); gettoken();
   print_obj( eval(getobj(), env) );
   printf("\n");
   return 0;
