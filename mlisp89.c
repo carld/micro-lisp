@@ -146,12 +146,23 @@ Object * intern(const char *sym) {
 }
 
 Object * getlist();
+Object * getobj();
+
+Object * getobj0() {
+  gettoken();
+  return getobj();
+}
 
 Object * getobj() {
+    /* reader macros */
+  if (token[0] == '`') return cons(intern("quasiquote"), cons(getobj0(), 0));
+  if (token[0] == '\'') return cons(intern("quote"), cons(getobj0(), 0));
+  if (token[0] == ',') return cons(intern("unquote"), cons(getobj0(), 0));
+  if (token[0] == '@') return cons(intern("unquote-splicing"), cons(getobj0(), 0));
+
   if (token[0] == '(') return getlist();
   if (is_doublequote(token[0])) return newstring(token);
   if (is_digit(token[0])) return newnumber(token);
-  /* TODO: reader macros: ' */
   return intern(token);
 }
 
@@ -351,16 +362,22 @@ static const char * env_src[][2]  = {
                         (lambda (g)
                           (fn (lambda args
                               (apply (g g) args))))))) },
+  { "list", LISP((lambda args
+                    args)) },
   { "append", LISP((Y (lambda (append0)
                           (lambda (x y)
                              (cond ((null? x) y)
                                    ((quote #t)   (cons (car x) (append0 (cdr x) y)))))))) },
   { "quasiquote", LISP((macro
-                        (Y (lambda (expand-qq)
-                             (lambda (exp)
-                                 (cond ((pair? exp)   (cond ((eq? (car exp) (quote unquote))  (cons (car (cdr exp)) (cdr (cdr exp))))
-                                                            ((quote #t) (cons (expand-qq (car exp)) (expand-qq (cdr exp))))))
-                                       ((quote #t)    exp)   )))))) },
+                        (lambda (exp0)
+                          (cons (quote list)
+                           ((Y (lambda (expand-qq)
+                                (lambda (exp)
+                                      (cond ((null? exp)  (quote ()))
+                                            ((pair? exp)
+                                                  (cond ((eq? (car exp) (quote unquote))  (car (cdr exp)))
+                                                        ((quote #t)     (cons (expand-qq (car exp)) (expand-qq (cdr exp))))))
+                                            ((quote #t)   (cons (quote quote) (cons exp (quote ()) ))))))) exp0 ))))) },
   { 0, 0 }
 };
 
@@ -387,6 +404,7 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
               cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
+              cons (cons(intern("eval"), cons(newsyntax(eval), 0)),
               cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
               cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
               cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
@@ -398,7 +416,7 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("-"), cons(newprimop(fsub), 0)),
               cons (cons(intern("*"), cons(newprimop(fmul), 0)),
               cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
-               0)))))))))))))))))))));
+               0))))))))))))))))))))));
   env = extend_env(env, env_src);
   print_obj(env); printf("\n");
   stream = stdin;
