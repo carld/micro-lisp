@@ -264,6 +264,7 @@ Object * format(Object *port, Object *control, Object *args) {
 
 Object * eval(Object *exp, Object *env);
 Object * apply(Object *fun, Object *args);
+Object * expand(Object *fun, Object *exp);
 
 Object * map_(Object *list, Object * (*function) (Object *, Object *), Object *context) {
   Object *head = 0, **args = &head;
@@ -282,11 +283,16 @@ Object *fnot(Object *a)     {  return car(a) == e_false ? e_true : e_false;  }
 Object *fpair(Object *a)    {  return car(a)->tag == _Pair  ? e_true : e_false;  }
 Object *fatom(Object *a)    {  return car(a)->tag == _Symbol  ? e_true : e_false;  }
 Object *fnull(Object *a)    {  return car(a) == 0           ? e_true : e_false; }
-Object *freadobj(Object *a) {  lookahead(default_input_port) /* what about successive call? */; return gettokenobj(default_input_port);  }
+Object *freadobj(Object *a) {  return gettokenobj(default_input_port);  }
 Object *fwriteobj(Object *a){  print_obj(default_output_port, car(a)); newline(default_output_port); return e_true;  }
 Object *fputch(Object *a)   {  putchar(car(a)->value.mword); return e_true; }
 Object *fgetch(Object *a)   {  return newchar(getchar()); }
 Object *fformat(Object *a)  {  return format(default_output_port, car(a), cdr(a)); }
+
+Object *feval(Object *exp, Object *env) { return eval(eval(car(cdr(exp)), env), env); }
+Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
+Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
+
 #define DEFMATH(OP,NAME) \
 Object * NAME (Object *args) { \
   Object *result = newnumber( car(args)->value.mword ); \
@@ -298,6 +304,7 @@ DEFMATH(+,fadd)
 DEFMATH(-,fsub)
 DEFMATH(*,fmul)
 DEFMATH(/,fdiv)
+Object *fmeq(Object *args) { return car(args)->value.mword == car(cdr(args))->value.mword ? e_true : e_false; }
 
 Object *fapply(Object *exp, Object *env) {
   Object *head = 0, **args = &head, *tmp = cdr(cdr(exp));
@@ -309,13 +316,10 @@ Object *fapply(Object *exp, Object *env) {
   return apply(eval(car(cdr(exp)), env), head);
 }
 
-Object *feval(Object *exp, Object *env) {
-  return eval(eval(car(cdr(exp)), env), env);
+Object *fexpand(Object *exp, Object *env) {
+  Object *fun = eval(car(car(cdr(exp))), env);
+  return expand(fun, cdr(car(cdr(exp))));
 }
-
-Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
-
-Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
 
 Object *fmacro(Object *exp, Object *env) {
   Object *lambda = eval(car(cdr(exp)), env);
@@ -324,10 +328,10 @@ Object *fmacro(Object *exp, Object *env) {
 }
 
 Object *fif(Object *exp, Object *env) {
-    if (eval(car(cdr(exp)), env) != e_false) /* anything not false is true */
-      return eval(car(cdr(cdr(exp))), env);
-    else
-      return eval(car(cdr(cdr(cdr(exp)))), env);
+  if (eval(car(cdr(exp)), env) != e_false) /* anything not false is true */
+    return eval(car(cdr(cdr(exp))), env);
+  else
+    return eval(car(cdr(cdr(cdr(exp)))), env);
 }
 
 Object * bind_append(Object *names, Object *values, Object *tail) {
@@ -345,6 +349,15 @@ Object * bind_append(Object *names, Object *values, Object *tail) {
     args = &( *args )->value.pair.next;
   }
   return head;
+}
+
+Object *expand(Object *fun, Object *exp) {
+  if (fun->tag == _Macro) {
+    Object *env0 = bind_append(fun->value.closure.params, exp, fun->value.closure.env);
+    return eval( fun->value.closure.body, env0 );
+  }
+  fprintf(default_output_port->value.stream, "cannot expand: "); print_obj(default_output_port, fun); newline(default_output_port);
+  return 0;
 }
 
 Object * apply(Object *fun, Object *args) {
@@ -375,8 +388,7 @@ Object * eval(Object *exp, Object *env) {
   } else if (exp->tag == _Pair) { /* prepare for apply */
     Object *fun = eval(car(exp), env);
     if (fun->tag == _Macro) { /* expand and evaluate */
-      Object *env0 = bind_append(fun->value.closure.params, cdr(exp), fun->value.closure.env);
-      Object *expanded = eval( fun->value.closure.body, env0 );
+      Object *expanded = expand(fun, cdr(exp));
       return eval(expanded, env);
     } else if (fun->tag == _Syntax) { /* special forms */
       return fun->value.psyn(exp, env);
@@ -428,17 +440,29 @@ static const char * env_src[][2]  = {
   { "let", LISP((macro
                    (lambda (args body)
                     (append
-                      (list (list (quote lambda)
-                         (map (lambda (x) (car x)) args)
-                         body))
-                        (map (lambda (x) (car (cdr x))) args)
-                         )))) },
+                      (list
+                        (list (quote lambda)
+                          (map (lambda (x) (car x)) args)
+                          body))
+                      (map (lambda (x) (car (cdr x))) args))))) },
+  { "letrec", LISP((macro
+                   (lambda (args body)
+                    (list
+                      (quote let)
+                      (map (lambda (x)
+                              (let ((var (car x))
+                                    (val (car (cdr x))))
+                                (list var (list (quote Y)
+                                                (list (quote lambda)
+                                                      (list var)
+                                                      val)))))
+                           args)
+                      body ))))  },
   { 0, 0 }
 };
 
 Object *eval_string(const char *str, Object *env) {
-  Object port;
-  port.tag = _Port;
+  Object port = { _Port };
   port.value.stream = funopen(&str, freadmem, NULL, NULL, NULL);
   lookahead(&port);
   return eval(gettokenobj(&port), env);
@@ -470,11 +494,13 @@ int main(int argc, char *argv[]) {
     cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
     cons (cons(intern("if"), cons(newsyntax(fif), 0)),
     cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
+    cons (cons(intern("expand"), cons(newsyntax(fexpand), 0)),
     cons (cons(intern("+"), cons(newprimop(fadd), 0)),
     cons (cons(intern("-"), cons(newprimop(fsub), 0)),
     cons (cons(intern("*"), cons(newprimop(fmul), 0)),
     cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
-      0)))))))))))))))))))));
+    cons (cons(intern("="), cons(newprimop(fmeq), 0)),
+      0)))))))))))))))))))))));
   default_input_port = newport(stdin), default_output_port = newport(stdout);
   env = extend_env(env, env_src);
   lookahead(default_input_port);

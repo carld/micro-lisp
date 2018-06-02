@@ -87,6 +87,8 @@ check-file-ok examples/built-in-map.lisp '(2 3 4)'
 check-file-ok examples/let.lisp '3'
 check-file-ok examples/format.lisp 'hello 21553 test world
 #t'
+check-file-ok examples/letrec.lisp '(4 3 2 1)'
+check-file-ok examples/expand.lisp '(let ((x (Y (lambda (x) (lambda (y r) (if (= y 0) r (cons y (x (- y 1) r)))))))) (x 4 (quote ())))'
 
 echo "Passed $SUCCESS of $TOTAL"
 
