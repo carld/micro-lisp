@@ -85,6 +85,8 @@ check-file-ok examples/quasiquote.lisp '(a b e d)'
 check-file-ok examples/cond.lisp 'e'
 check-file-ok examples/built-in-map.lisp '(2 3 4)'
 check-file-ok examples/let.lisp '3'
+check-file-ok examples/format.lisp 'hello 21553 test world
+#t'
 
 echo "Passed $SUCCESS of $TOTAL"
 

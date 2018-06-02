@@ -7,7 +7,7 @@
 typedef struct Object {
   enum { _Symbol, _Pair, _Primitive, _Closure, _Macro, _Syntax, _Char, _String, _Integer, _Port } tag;
   union Value {
-    int mword;
+    long mword;
     const char * string;
     FILE *stream;
     struct Object * (*pfn)   (struct Object *);
@@ -23,8 +23,7 @@ typedef struct Object {
     } closure;
   } value;
 } Object;
-static Object *default_input_port, *default_output_port;
-static Object * symbols = 0;
+static Object *default_input_port = 0, *default_output_port = 0, *symbols = 0;
 static int look; /* look ahead character */
 #define TOKEN_MAX 32
 static char token[TOKEN_MAX]; /* token */
@@ -45,27 +44,34 @@ int freadmem(void *cookie, char *buf, int size) {  /* funopen enables parsing of
   return num_read;
 }
 
+int fwritemem(void *cookie, char *buf, int size) { /* funopen write */
+  char **position = (char **) cookie,   *mem = * (char **) position;
+  int num_written = 0;
+  for( ; num_written < size && *buf != '\0' ; num_written++)
+    *mem++ = *buf++;
+  *position = mem;
+  return num_written;
+}
+
 void lookahead(Object *port) { look = getc(port->value.stream); }
 void gettoken(Object *port) {
   int index = 0;
   while(is_space(look)) { lookahead(port); }
-  if (is_parens(look)) {
-    token[index++] = look;  lookahead(port);
-  } else if (is_syntaxquote(look)) { /* quoting, quasiquoting */
-    token[index++] = look; lookahead(port);
+  if (is_parens(look) || is_syntaxquote(look)) {  /* parens, quoting, quasiquoting */
+    token[index++] = look,  lookahead(port);
   } else if (is_doublequote(look)) { /* string */
-    token[index++] = look;  lookahead(port);
+    token[index++] = look,  lookahead(port); /* " */
     while(index < TOKEN_MAX - 1 && look != EOF && !is_doublequote(look)) {
-      token[index++] = look; lookahead(port);
+      token[index++] = look, lookahead(port);
     }
-    token[index++] = look;  lookahead(port);
+    token[index++] = look,  lookahead(port); /* " */
   } else if (is_digit(look)) { /* number */
     while(index < TOKEN_MAX - 1 && look != EOF && is_digit(look)) {
-      token[index++] = look; lookahead(port);
+      token[index++] = look, lookahead(port);
     }
   } else { /* symbol */
     while(index < TOKEN_MAX - 1 && look != EOF && !is_space(look) && !is_parens(look)) {
-      token[index++] = look;  lookahead(port);
+      token[index++] = look,  lookahead(port);
     }
   }
   token[index] = '\0';
@@ -89,9 +95,9 @@ Object * newsymbol(const char *str) {
   return obj;
 }
 
-Object *newnumber(const char * num) {
+Object *newnumber(long num) {
   Object *obj = tagalloc(_Integer);
-  obj->value.mword = atoi(num);
+  obj->value.mword = num;
   return obj;
 }
 
@@ -142,6 +148,9 @@ Object * newport(FILE *stream) {
 Object *car(Object *x) { return x ? x->value.pair.data : 0; }
 Object *cdr(Object *x) { return x ? x->value.pair.next : 0; }
 
+#define e_true     intern("#t")
+#define e_false    0
+
 Object * intern(const char *sym) {
   Object *_pair = symbols;
   for ( ; _pair ; _pair = cdr(_pair))
@@ -167,7 +176,7 @@ Object * getobj(Object *port) {
 
   if (token[0] == '(') return getlist(port);
   if (is_doublequote(token[0])) return newstring(token);
-  if (is_digit(token[0])) return newnumber(token);
+  if (is_digit(token[0])) return newnumber(atoi(token));
   return intern(token);
 }
 
@@ -204,23 +213,53 @@ void print_obj(Object *port, Object *ob) {
     fprintf(port->value.stream, "("); print_obj_list(port, ob); fprintf(port->value.stream, ")");
   } else if (ob->tag == _Closure) {
     fprintf(port->value.stream, "<CLOSURE>");
+    print_obj(port, ob->value.closure.params);
+    print_obj(port, ob->value.closure.body);
+    print_obj(port, ob->value.closure.env);
   } else if (ob->tag == _Primitive) {
     fprintf(port->value.stream, "<PRIMOP>");
   } else if (ob->tag == _Macro) {
     fprintf(port->value.stream, "<MACRO>");
   } else if (ob->tag == _Syntax) {
     fprintf(port->value.stream, "<SYNTAX>");
+    print_obj(port, ob->value.closure.params);
+    print_obj(port, ob->value.closure.body);
+    print_obj(port, ob->value.closure.env);
   } else if (ob->tag == _Char) {
-    fprintf(port->value.stream, "%c", ob->value.mword);
+    fprintf(port->value.stream, "%c", (int) ob->value.mword);
   } else if (ob->tag == _String) {
     fprintf(port->value.stream, "\"%s\"", ob->value.string);
   } else if (ob->tag == _Integer) {
-    fprintf(port->value.stream, "%d", ob->value.mword);
+    fprintf(port->value.stream, "%ld", ob->value.mword);
   }
 }
 
 void newline(Object *port) {
   fprintf(port->value.stream, "\n");
+}
+
+Object * format(Object *port, Object *control, Object *args) {
+  const char *fmt = control->value.string;
+  while(*fmt) {
+    switch(*fmt) {
+      case '~': /* ~s write, ~a display, ~% newline, ~~ tilde */
+        fmt++;
+        if (*fmt == 's') {
+          print_obj(port, car(args));
+          args = cdr(args);
+        } else if (*fmt == '%') {
+          fprintf(port->value.stream, "\n");
+        } else if (*fmt == '~') {
+          fputc('~', port->value.stream);
+        }
+        fmt++;
+        break;
+      default:
+        fputc(*fmt++, port->value.stream);
+        break;
+    }
+  }
+  return e_true;
 }
 
 Object * eval(Object *exp, Object *env);
@@ -235,9 +274,6 @@ Object * map_(Object *list, Object * (*function) (Object *, Object *), Object *c
   return head;
 }
 
-#define e_true     intern("#t")
-#define e_false    0
-
 Object *fcons(Object *a)    {  return cons(car(a), car(cdr(a)));  }
 Object *fcar(Object *a)     {  return car(car(a));  }
 Object *fcdr(Object *a)     {  return cdr(car(a));  }
@@ -250,12 +286,12 @@ Object *freadobj(Object *a) {  lookahead(default_input_port) /* what about succe
 Object *fwriteobj(Object *a){  print_obj(default_output_port, car(a)); newline(default_output_port); return e_true;  }
 Object *fputch(Object *a)   {  putchar(car(a)->value.mword); return e_true; }
 Object *fgetch(Object *a)   {  return newchar(getchar()); }
-#define DEFMATH(op,name) \
-Object * name (Object *args) { \
-  Object *result = tagalloc(_Integer); \
-  result->value.mword = car(args)->value.mword; \
+Object *fformat(Object *a)  {  return format(default_output_port, car(a), cdr(a)); }
+#define DEFMATH(OP,NAME) \
+Object * NAME (Object *args) { \
+  Object *result = newnumber( car(args)->value.mword ); \
   for ( args = cdr(args); args; args = cdr(args)) \
-    result->value.mword = result->value.mword op car(args)->value.mword; \
+    result->value.mword = result->value.mword OP car(args)->value.mword; \
   return result; \
 }
 DEFMATH(+,fadd)
@@ -352,17 +388,6 @@ Object * eval(Object *exp, Object *env) {
   return 0;
 }
 
-Object *flet(Object *exp, Object *env) {
-  Object *names_head = 0, **names = &names_head, *values_head = 0, **values = &values_head, *body = car(cdr(cdr(exp)));
-  for ( exp = car(cdr(exp)); exp ; exp = cdr(exp) ) {
-    *names = cons(car(car(exp)), 0);
-    names = &( *names )->value.pair.next;
-    *values = cons(car(cdr(car(exp))), 0);
-    values = &( *values )->value.pair.next;
-  }
-  return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
-}
-
 /* A limitation of the macro stringizing # is being able to use a single quote ' */
 #define LISP(code) #code
 static const char * env_src[][2]  = {
@@ -428,34 +453,30 @@ Object *extend_env(Object *env, const char *src[][2]) {
 
 int main(int argc, char *argv[]) {
   Object *env =
-              cons (cons(intern("car"), cons(newprimop(fcar), 0)),
-              cons (cons(intern("cdr"), cons(newprimop(fcdr), 0)),
-              cons (cons(intern("cons"), cons(newprimop(fcons), 0)),
-              cons (cons(intern("eq?"), cons(newprimop(feq), 0)),
-              cons (cons(intern("not"), cons(newprimop(fnot), 0)),
-              cons (cons(intern("pair?"), cons(newprimop(fpair), 0)),
-              cons (cons(intern("symbol?"), cons(newprimop(fatom), 0)),
-              cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
-              cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
-              cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
-              cons (cons(intern("eval"), cons(newsyntax(feval), 0)),
-              cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
-              cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
-              cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
-              cons (cons(intern("if"), cons(newsyntax(fif), 0)),
-              cons (cons(intern("let"), cons(newsyntax(flet), 0)),
-              cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
-              cons (cons(intern("+"), cons(newprimop(fadd), 0)),
-              cons (cons(intern("-"), cons(newprimop(fsub), 0)),
-              cons (cons(intern("*"), cons(newprimop(fmul), 0)),
-              cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
-               0)))))))))))))))))))));
+    cons (cons(intern("car"), cons(newprimop(fcar), 0)),
+    cons (cons(intern("cdr"), cons(newprimop(fcdr), 0)),
+    cons (cons(intern("cons"), cons(newprimop(fcons), 0)),
+    cons (cons(intern("eq?"), cons(newprimop(feq), 0)),
+    cons (cons(intern("not"), cons(newprimop(fnot), 0)),
+    cons (cons(intern("pair?"), cons(newprimop(fpair), 0)),
+    cons (cons(intern("symbol?"), cons(newprimop(fatom), 0)),
+    cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
+    cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
+    cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
+    cons (cons(intern("format"), cons(newprimop(fformat), 0)),
+    cons (cons(intern("eval"), cons(newsyntax(feval), 0)),
+    cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
+    cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
+    cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
+    cons (cons(intern("if"), cons(newsyntax(fif), 0)),
+    cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
+    cons (cons(intern("+"), cons(newprimop(fadd), 0)),
+    cons (cons(intern("-"), cons(newprimop(fsub), 0)),
+    cons (cons(intern("*"), cons(newprimop(fmul), 0)),
+    cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
+      0)))))))))))))))))))));
   default_input_port = newport(stdin), default_output_port = newport(stdout);
   env = extend_env(env, env_src);
-#if 0
-  print_obj(default_output_port, env);
-  newline(default_output_port);
-#endif
   lookahead(default_input_port);
   print_obj(default_output_port, eval(gettokenobj(default_input_port), env) );
   newline(default_output_port);
