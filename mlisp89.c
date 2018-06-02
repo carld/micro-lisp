@@ -223,17 +223,17 @@ void newline(Object *port) {
   fprintf(port->value.stream, "\n");
 }
 
-Object * map(Object *list, Object * (*fn) (Object *, Object *), Object *context) {
+Object * eval(Object *exp, Object *env);
+Object * apply(Object *fun, Object *args);
+
+Object * map_(Object *list, Object * (*function) (Object *, Object *), Object *context) {
   Object *head = 0, **args = &head;
   for ( ; list ; list = cdr(list) ) {
-    *args = cons( fn(car(list), context), 0);
+    *args = cons( function(car(list), context), 0);
     args = &(*args)->value.pair.next;
   }
   return head;
 }
-
-Object * eval(Object *exp, Object *env);
-Object * apply(Object *fun, Object *args);
 
 #define e_true     intern("#t")
 #define e_false    0
@@ -273,6 +273,10 @@ Object *fapply(Object *exp, Object *env) {
   return apply(eval(car(cdr(exp)), env), head);
 }
 
+Object *feval(Object *exp, Object *env) {
+  return eval(eval(car(cdr(exp)), env), env);
+}
+
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
 
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
@@ -283,13 +287,6 @@ Object *fmacro(Object *exp, Object *env) {
   return newmacro(lambda->value.closure.params, lambda->value.closure.body, lambda->value.closure.env);
 }
 
-Object *fcond(Object *exp, Object *env) {
-  for (exp = cdr(exp) ; exp ; exp = cdr(exp) ) {
-    if (eval(car(car(exp)), env) != e_false) /* anything not false is true */
-      return eval(car(cdr(car(exp))), env);
-  }
-  return 0;
-}
 Object *fif(Object *exp, Object *env) {
     if (eval(car(cdr(exp)), env) != e_false) /* anything not false is true */
       return eval(car(cdr(cdr(exp))), env);
@@ -321,7 +318,7 @@ Object * apply(Object *fun, Object *args) {
     Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
     return eval( fun->value.closure.body, env );
   }
-  puts("cannot apply: "); print_obj(default_output_port, fun); newline(default_output_port);
+  fprintf(default_output_port->value.stream, "cannot apply: "); print_obj(default_output_port, fun); newline(default_output_port);
   return 0;
 }
 
@@ -331,7 +328,7 @@ Object * eval(Object *exp, Object *env) {
       if (exp == car(car(env)))
         return car(cdr(car(env)));
     }
-    printf("cannot lookup: "); print_obj(default_output_port, exp); newline(default_output_port);
+    fprintf(default_output_port->value.stream, "cannot lookup: "); print_obj(default_output_port, exp); newline(default_output_port);
     return 0;
   } else if (exp->tag == _Integer) {
     return exp;
@@ -348,10 +345,10 @@ Object * eval(Object *exp, Object *env) {
     } else if (fun->tag == _Syntax) { /* special forms */
       return fun->value.psyn(exp, env);
     } else {
-      return apply(fun, map(cdr(exp), eval, env));
+      return apply(fun, map_(cdr(exp), eval, env));
     }
   }
-  puts("cannot evaluate: "); print_obj(default_output_port, exp); newline(default_output_port);
+  fprintf(default_output_port->value.stream, "cannot evaluate: "); print_obj(default_output_port, exp); newline(default_output_port);
   return 0;
 }
 
@@ -366,6 +363,7 @@ Object *flet(Object *exp, Object *env) {
   return eval(cons(cons(intern("lambda"), cons(names_head, cons(body, 0))), values_head), env);
 }
 
+/* A limitation of the macro stringizing # is being able to use a single quote ' */
 #define LISP(code) #code
 static const char * env_src[][2]  = {
   { "Y", LISP((lambda (fn)
@@ -397,6 +395,19 @@ static const char * env_src[][2]  = {
                                                   (cond ((eq? (car exp) (quote unquote))  (car (cdr exp)))
                                                         ((quote #t)     (cons (expand-qq (car exp)) (expand-qq (cdr exp))))))
                                             ((quote #t)   (cons (quote quote) (cons exp (quote ()) ))))))) exp0 ))))) },
+  { "map", LISP((lambda (fn l0)
+                   ((Y (lambda (mapr)
+                          (lambda (l1 l2)
+                            (if (null? l1) l2
+                              (cons (fn (car l1))  (mapr (cdr l1) l2)))))) l0 (quote ()) ))) },
+  { "let", LISP((macro
+                   (lambda (args body)
+                    (append
+                      (list (list (quote lambda)
+                         (map (lambda (x) (car x)) args)
+                         body))
+                        (map (lambda (x) (car (cdr x))) args)
+                         )))) },
   { 0, 0 }
 };
 
@@ -416,8 +427,8 @@ Object *extend_env(Object *env, const char *src[][2]) {
 }
 
 int main(int argc, char *argv[]) {
-  Object *env;
-  env =       cons (cons(intern("car"), cons(newprimop(fcar), 0)),
+  Object *env =
+              cons (cons(intern("car"), cons(newprimop(fcar), 0)),
               cons (cons(intern("cdr"), cons(newprimop(fcdr), 0)),
               cons (cons(intern("cons"), cons(newprimop(fcons), 0)),
               cons (cons(intern("eq?"), cons(newprimop(feq), 0)),
@@ -427,7 +438,7 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("null?"), cons(newprimop(fnull), 0)),
               cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
               cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
-              cons (cons(intern("eval"), cons(newsyntax(eval), 0)),
+              cons (cons(intern("eval"), cons(newsyntax(feval), 0)),
               cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
               cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
               cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
@@ -439,12 +450,12 @@ int main(int argc, char *argv[]) {
               cons (cons(intern("*"), cons(newprimop(fmul), 0)),
               cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
                0)))))))))))))))))))));
-  env = extend_env(env, env_src);
   default_input_port = newport(stdin), default_output_port = newport(stdout);
-#if DEBUG
+  env = extend_env(env, env_src);
+#if 0
   print_obj(default_output_port, env);
-#endif
   newline(default_output_port);
+#endif
   lookahead(default_input_port);
   print_obj(default_output_port, eval(gettokenobj(default_input_port), env) );
   newline(default_output_port);

@@ -82,6 +82,9 @@ check-file-ok examples/lambda-rest.lisp '2'
 check-file-ok examples/append.lisp '(1 2 3 4 5 6)'
 check-file-ok examples/curry.lisp '(HEAD TAIL)'
 check-file-ok examples/quasiquote.lisp '(a b e d)'
+check-file-ok examples/cond.lisp 'e'
+check-file-ok examples/built-in-map.lisp '(2 3 4)'
+check-file-ok examples/let.lisp '3'
 
 echo "Passed $SUCCESS of $TOTAL"
 
