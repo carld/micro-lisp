@@ -1,4 +1,4 @@
-/* micro lisp (C) A. Carl Douglas */
+/* Micro Scheme (C) A. Carl Douglas */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,7 +32,9 @@ int is_parens(char x) { return x == '(' || x == ')'; }
 int is_syntaxquote(char x)  { return x == '\'' || x == '`' || x == ','; }
 int is_doublequote(char x)  { return x == '"'; }
 int is_digit(char x)  { return x >= '0' && x <= '9'; }
-int is_op(char x) { return x == '-' || x == '+' || x == '*' || x == '/' || x == '=' || x == '%' || x == '^' || x == '&' || x == '|' || x == '!'; }
+int is_op(char x) { return x == '-' || x == '+' || x == '*' || x == '/'
+   || x == '=' || x == '%' || x == '^' || x == '&' || x == '|' || x == '!'
+     ; }
 
 int freadmem(void *cookie, char *buf, int size) {  /* funopen enables parsing of memory as well as files */
   char **position = (char **) cookie,   *mem = * (char **) position;
@@ -68,7 +70,7 @@ void gettoken(Object *port) {
     while(index < TOKEN_MAX - 1 && look != EOF && !is_doublequote(look)) {
       token[index++] = look, lookahead(port);
     }
-    token[index++] = look,  lookahead(port); /* " */
+    lookahead(port); /* don't keep closing double quote */
   } else if (is_digit(look)) { /* number */
     while(index < TOKEN_MAX - 1 && look != EOF && is_digit(look)) {
       token[index++] = look, lookahead(port);
@@ -107,9 +109,7 @@ Object *newnumber(long num) {
 
 Object * newstring(const char *str) {
   Object *obj = tagalloc(_String);
-  int length = strlen(str);
-  char * string = strdup(str+1); /* trim quotes */ string[length-2] = '\0';
-  obj->value.string = string;
+  obj->value.string = str;
   return obj;
 }
 
@@ -177,9 +177,8 @@ Object * getobj(Object *port) {
   if (token[0] == ',') return cons(intern("unquote"), cons(gettokenobj(port), 0));
   if (token[0] == '`') return cons(intern("quasiquote"), cons(gettokenobj(port), 0));
   if (token[0] == '\'') return cons(intern("quote"), cons(gettokenobj(port), 0));
-  
   if (token[0] == '(') return getlist(port);
-  if (is_doublequote(token[0])) return newstring(token);
+  if (is_doublequote(token[0])) return newstring(token+1); /* drop opening double quote */
   if (is_digit(token[0])) return newnumber(atoi(token));
   return intern(token);
 }
@@ -192,7 +191,18 @@ Object * getlist(Object *port) {
   return cons(tmp, getlist(port));
 }
 
+void newline(Object *port) {
+  fprintf(port->value.stream, "\n");
+}
 void print_obj(Object *port, Object *ob);
+Object * format(Object *port, Object *control, Object *args);
+
+void err(const char *msg, Object *exp) {
+  fprintf(default_output_port->value.stream, "%s", msg);
+  print_obj(default_output_port, exp);
+  newline(default_output_port);
+  exit(1);
+}
 
 void print_obj_list(Object *port, Object *ob) {
   print_obj(port, car(ob));
@@ -217,18 +227,14 @@ void print_obj(Object *port, Object *ob) {
     fprintf(port->value.stream, "("); print_obj_list(port, ob); fprintf(port->value.stream, ")");
   } else if (ob->tag == _Closure) {
     fprintf(port->value.stream, "<CLOSURE>");
-    print_obj(port, ob->value.closure.params);
-    print_obj(port, ob->value.closure.body);
-    print_obj(port, ob->value.closure.env);
+    print_obj(port, ob->value.closure.params); print_obj(port, ob->value.closure.body);
   } else if (ob->tag == _Primitive) {
     fprintf(port->value.stream, "<PRIMOP>");
   } else if (ob->tag == _Macro) {
     fprintf(port->value.stream, "<MACRO>");
+    print_obj(port, ob->value.closure.params); print_obj(port, ob->value.closure.body);
   } else if (ob->tag == _Syntax) {
     fprintf(port->value.stream, "<SYNTAX>");
-    print_obj(port, ob->value.closure.params);
-    print_obj(port, ob->value.closure.body);
-    print_obj(port, ob->value.closure.env);
   } else if (ob->tag == _Char) {
     fprintf(port->value.stream, "%c", (int) ob->value.mword);
   } else if (ob->tag == _String) {
@@ -238,29 +244,22 @@ void print_obj(Object *port, Object *ob) {
   }
 }
 
-void newline(Object *port) {
-  fprintf(port->value.stream, "\n");
-}
-
 Object * format(Object *port, Object *control, Object *args) {
   const char *fmt = control->value.string;
   while(*fmt) {
-    switch(*fmt) {
-      case '~': /* ~s write, ~a display, ~% newline, ~~ tilde */
+    if (*fmt == '~') {/* ~s write, ~a display, ~% newline, ~~ tilde */
         fmt++;
         if (*fmt == 's') {
           print_obj(port, car(args));
           args = cdr(args);
         } else if (*fmt == '%') {
-          fprintf(port->value.stream, "\n");
+          fputc('\n', port->value.stream);
         } else if (*fmt == '~') {
           fputc('~', port->value.stream);
         }
         fmt++;
-        break;
-      default:
-        fputc(*fmt++, port->value.stream);
-        break;
+    } else {
+      fputc(*fmt++, port->value.stream);
     }
   }
   return e_true;
@@ -292,10 +291,11 @@ Object *fwriteobj(Object *a){  print_obj(default_output_port, car(a)); newline(d
 Object *fputch(Object *a)   {  putchar(car(a)->value.mword); return e_true; }
 Object *fgetch(Object *a)   {  return newchar(getchar()); }
 Object *fformat(Object *a)  {  return format(default_output_port, car(a), cdr(a)); }
+Object *feval(Object *a)    { return eval(car(a), car(cdr(a))); }
 
-Object *feval(Object *exp, Object *env) { return eval(eval(car(cdr(exp)), env), env); }
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
+Object *fenv(Object *exp, Object *env) { return env; }
 
 #define DEFMATH(OP,NAME) \
 Object * NAME (Object *args) { \
@@ -304,11 +304,14 @@ Object * NAME (Object *args) { \
     result->value.mword = result->value.mword OP car(args)->value.mword; \
   return result; \
 }
+#define DEFCMP(OP,NAME,FIELD)  Object * NAME (Object *args) { return car(args)->value.FIELD OP car(cdr(args))->value.FIELD ? e_true : e_false; }
 DEFMATH(+,fadd)
 DEFMATH(-,fsub)
 DEFMATH(*,fmul)
 DEFMATH(/,fdiv)
-Object *fmeq(Object *args) { return car(args)->value.mword == car(cdr(args))->value.mword ? e_true : e_false; }
+DEFMATH(%,fmodulo)
+DEFMATH(^,fexp)
+DEFCMP(==,fmeq,mword)
 
 Object *fapply(Object *exp, Object *env) {
   Object *head = 0, **args = &head, *tmp = cdr(cdr(exp));
@@ -325,7 +328,7 @@ Object *fexpand(Object *exp, Object *env) {
   if (fun->tag == _Macro) {
     return expand(fun, cdr(car(cdr(exp))));
   }
-  fprintf(default_output_port->value.stream, "cannot expand: "); print_obj(default_output_port, exp); newline(default_output_port);
+  err("cannot expand: ", exp);
   return 0;
 }
 
@@ -334,7 +337,7 @@ Object *fmacro(Object *exp, Object *env) {
   if (lambda->tag == _Closure) {
     return newmacro(lambda->value.closure.params, lambda->value.closure.body, lambda->value.closure.env);
   }
-  fprintf(default_output_port->value.stream, "cannot make macro from: "); print_obj(default_output_port, exp); newline(default_output_port);
+  err("cannot make macro from: ", exp);
   return 0;
 }
 
@@ -347,11 +350,10 @@ Object *fif(Object *exp, Object *env) {
 
 Object * bind_append(Object *names, Object *values, Object *tail) {
   Object *head = tail, **args = &head;
-  if (names == 0) return tail;
-  if (names->tag == _Symbol) { /* (lambda args (do args)) */
+  if (names && names->tag == _Symbol) { /* (lambda args (do args)) */
     return cons( cons(names, cons(values, 0)), tail);
   }
-  for ( ; values ; values = cdr(values), names = cdr(names) ) {
+  for ( ; names && values ; values = cdr(values), names = cdr(names) ) {
     if (car(names) == intern(".")) { /* variadic lambda syntax */
       *args = cons( cons(car(cdr(names)), cons(values, 0)), tail);
       break;
@@ -366,7 +368,7 @@ Object *expand(Object *fun, Object *exp) {
   if (fun->tag == _Macro) {
     return eval( fun->value.closure.body, bind_append(fun->value.closure.params, exp, fun->value.closure.env) );
   }
-  fprintf(default_output_port->value.stream, "cannot expand: "); print_obj(default_output_port, fun); newline(default_output_port);
+  err("cannot expand: ", fun);
   return 0;
 }
 
@@ -374,12 +376,13 @@ Object * apply(Object *fun, Object *args) {
   if (fun->tag == _Primitive) {
     return fun->value.pfn(args);
   } else if (fun->tag == _Closure) {
-    Object *env = bind_append(fun->value.closure.params, args, fun->value.closure.env);
-    return eval( fun->value.closure.body, env );
+    return eval( fun->value.closure.body, bind_append(fun->value.closure.params, args, fun->value.closure.env) );
   }
-  fprintf(default_output_port->value.stream, "cannot apply: "); print_obj(default_output_port, fun); newline(default_output_port);
+  err("cannot apply: ", fun);
   return 0;
 }
+
+#define evlist(ex,en) map_(ex, eval, en)
 
 Object * eval(Object *exp, Object *env) {
   if (exp->tag == _Symbol ) {
@@ -387,7 +390,7 @@ Object * eval(Object *exp, Object *env) {
       if (exp == car(car(env)))
         return car(cdr(car(env)));
     }
-    fprintf(default_output_port->value.stream, "cannot lookup: "); print_obj(default_output_port, exp); newline(default_output_port);
+    err("cannot lookup: ", exp);
     return 0;
   } else if (exp->tag == _Integer) {
     return exp;
@@ -398,19 +401,18 @@ Object * eval(Object *exp, Object *env) {
   } else if (exp->tag == _Pair) { /* prepare for apply */
     Object *fun = eval(car(exp), env);
     if (fun->tag == _Macro) { /* expand and evaluate */
-      Object *expanded = expand(fun, cdr(exp));
-      return eval(expanded, env);
+      return eval(expand(fun, cdr(exp)), env);
     } else if (fun->tag == _Syntax) { /* special forms */
       return fun->value.psyn(exp, env);
     } else {
-      return apply(fun, map_(cdr(exp), eval, env));
+      return apply(fun, evlist(cdr(exp), env));
     }
   }
-  fprintf(default_output_port->value.stream, "cannot evaluate: "); print_obj(default_output_port, exp); newline(default_output_port);
+  err("cannot evaluate: ", exp);
   return 0;
 }
 
-/* A limitation of the macro stringizing # is being able to use a single quote ' */
+/* A limitation of the macro stringizing # is being able to use a single quote 'x use (quote x) instead */
 #define LISP(code) #code
 static const char * env_src[][2]  = {
   { "Y", LISP((lambda (fn)
@@ -420,6 +422,18 @@ static const char * env_src[][2]  = {
                               (apply (g g) args))))))) },
   { "list", LISP((lambda args
                     args)) },
+  { "foldr", LISP((lambda (fn0 acc0 lst0)
+                    ((Y (lambda (foldr0)
+                        (lambda (acc lst)
+                            (if (null? lst)  acc
+                               (fn0 (car lst) (foldr0 acc (cdr lst)))))))
+                      acc0 lst0 ))) },
+  { "foldl", LISP((lambda (fn0 acc0 lst0)
+                    ((Y (lambda (foldl0)
+                        (lambda (acc lst)
+                            (if (null? lst)  acc
+                               (foldl0 (fn0 (car lst) acc) (cdr lst))))))
+                      acc0 lst0 ))) },
   { "cond", LISP((macro
                     (lambda exp0
                       ((Y (lambda (condr)
@@ -456,6 +470,12 @@ static const char * env_src[][2]  = {
                           (map (lambda (x) (car x)) args)
                           body))
                       (map (lambda (x) (car (cdr x))) args))))) },
+  { "let*", LISP((macro
+                   (lambda (args body)
+                      (foldr (lambda (x y)
+                          (list (quote let) (list x) y))
+                          body
+                          args )))) },
   { "letrec", LISP((macro
                    (lambda (args body)
                     (list
@@ -469,14 +489,25 @@ static const char * env_src[][2]  = {
                                                       val)))))
                            args)
                       body ))))  },
+  { "letrec*", LISP((macro
+                   (lambda (args body)
+                      (foldr (lambda (x y)
+                          (list (quote letrec) (list x) y))
+                          body
+                          args )))) },
+  { "curry", LISP((lambda (func arg1)
+                     (lambda (arg)
+                        (apply func (cons arg1 (list arg)))))) },
+  { "compose", LISP((lambda (f g)
+                      (lambda arg
+                        (f (apply g arg))))) },
   { 0, 0 }
 };
 
 Object *eval_string(const char *str, Object *env) {
-  Object port = { _Port };
-  port.value.stream = funopen(&str, freadmem, NULL, NULL, NULL);
-  lookahead(&port);
-  return eval(gettokenobj(&port), env);
+  Object *port = newport( funopen(&str, freadmem, NULL, NULL, NULL) );
+  lookahead(port);
+  return eval(gettokenobj(port), env);
 }
 
 Object *extend_env(Object *env, const char *src[][2]) {
@@ -499,21 +530,22 @@ int main(int argc, char *argv[]) {
     cons (cons(intern("read"), cons(newprimop(freadobj), 0)),
     cons (cons(intern("write"), cons(newprimop(fwriteobj), 0)),
     cons (cons(intern("format"), cons(newprimop(fformat), 0)),
-    cons (cons(intern("eval"), cons(newsyntax(feval), 0)),
+    cons (cons(intern("eval"), cons(newprimop(feval), 0)),
     cons (cons(intern("apply"), cons(newsyntax(fapply), 0)),
     cons (cons(intern("quote"), cons(newsyntax(fquote), 0)),
     cons (cons(intern("lambda"), cons(newsyntax(flambda), 0)),
     cons (cons(intern("if"), cons(newsyntax(fif), 0)),
     cons (cons(intern("macro"), cons(newsyntax(fmacro), 0)),
     cons (cons(intern("expand"), cons(newsyntax(fexpand), 0)),
+    cons (cons(intern("environment"), cons(newsyntax(fenv), 0)),
     cons (cons(intern("+"), cons(newprimop(fadd), 0)),
     cons (cons(intern("-"), cons(newprimop(fsub), 0)),
     cons (cons(intern("*"), cons(newprimop(fmul), 0)),
     cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
     cons (cons(intern("="), cons(newprimop(fmeq), 0)),
-      0)))))))))))))))))))))));
-  default_input_port = newport(stdin), default_output_port = newport(stdout);
+      0))))))))))))))))))))))));
   env = extend_env(env, env_src);
+  default_input_port = newport(stdin), default_output_port = newport(stdout);
   lookahead(default_input_port);
   print_obj(default_output_port, eval(gettokenobj(default_input_port), env) );
   newline(default_output_port);
