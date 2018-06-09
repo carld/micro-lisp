@@ -32,6 +32,7 @@ int is_parens(char x) { return x == '(' || x == ')'; }
 int is_syntaxquote(char x)  { return x == '\'' || x == '`' || x == ','; }
 int is_doublequote(char x)  { return x == '"'; }
 int is_digit(char x)  { return x >= '0' && x <= '9'; }
+int is_op(char x) { return x == '-' || x == '+' || x == '*' || x == '/' || x == '=' || x == '%' || x == '^' || x == '&' || x == '|' || x == '!'; }
 
 int freadmem(void *cookie, char *buf, int size) {  /* funopen enables parsing of memory as well as files */
   char **position = (char **) cookie,   *mem = * (char **) position;
@@ -57,8 +58,11 @@ void lookahead(Object *port) { look = getc(port->value.stream); }
 void gettoken(Object *port) {
   int index = 0;
   while(is_space(look)) { lookahead(port); }
-  if (is_parens(look) || is_syntaxquote(look)) {  /* parens, quoting, quasiquoting */
+  if (is_parens(look) || is_syntaxquote(look) || is_op(look)) {  /* parens, quoting, quasiquoting */
     token[index++] = look,  lookahead(port);
+    if (token[0] == ',' && look == '@') {
+      token[index++] = look, lookahead(port);
+    }
   } else if (is_doublequote(look)) { /* string */
     token[index++] = look,  lookahead(port); /* " */
     while(index < TOKEN_MAX - 1 && look != EOF && !is_doublequote(look)) {
@@ -168,12 +172,12 @@ Object * gettokenobj(Object *port) {
 }
 
 Object * getobj(Object *port) {
-    /* reader macros */
+  /* reader macros */
+  if (token[0] == ',' && token[1] == '@') return cons(intern("unquote-splicing"), cons(gettokenobj(port), 0));
+  if (token[0] == ',') return cons(intern("unquote"), cons(gettokenobj(port), 0));
   if (token[0] == '`') return cons(intern("quasiquote"), cons(gettokenobj(port), 0));
   if (token[0] == '\'') return cons(intern("quote"), cons(gettokenobj(port), 0));
-  if (token[0] == ',') return cons(intern("unquote"), cons(gettokenobj(port), 0));
-  if (token[0] == '@') return cons(intern("unquote-splicing"), cons(gettokenobj(port), 0));
-
+  
   if (token[0] == '(') return getlist(port);
   if (is_doublequote(token[0])) return newstring(token);
   if (is_digit(token[0])) return newnumber(atoi(token));
@@ -318,13 +322,20 @@ Object *fapply(Object *exp, Object *env) {
 
 Object *fexpand(Object *exp, Object *env) {
   Object *fun = eval(car(car(cdr(exp))), env);
-  return expand(fun, cdr(car(cdr(exp))));
+  if (fun->tag == _Macro) {
+    return expand(fun, cdr(car(cdr(exp))));
+  }
+  fprintf(default_output_port->value.stream, "cannot expand: "); print_obj(default_output_port, exp); newline(default_output_port);
+  return 0;
 }
 
 Object *fmacro(Object *exp, Object *env) {
   Object *lambda = eval(car(cdr(exp)), env);
-  if (lambda->tag != _Closure) { printf("cannot make macro from non-lambda"); }
-  return newmacro(lambda->value.closure.params, lambda->value.closure.body, lambda->value.closure.env);
+  if (lambda->tag == _Closure) {
+    return newmacro(lambda->value.closure.params, lambda->value.closure.body, lambda->value.closure.env);
+  }
+  fprintf(default_output_port->value.stream, "cannot make macro from: "); print_obj(default_output_port, exp); newline(default_output_port);
+  return 0;
 }
 
 Object *fif(Object *exp, Object *env) {
@@ -353,8 +364,7 @@ Object * bind_append(Object *names, Object *values, Object *tail) {
 
 Object *expand(Object *fun, Object *exp) {
   if (fun->tag == _Macro) {
-    Object *env0 = bind_append(fun->value.closure.params, exp, fun->value.closure.env);
-    return eval( fun->value.closure.body, env0 );
+    return eval( fun->value.closure.body, bind_append(fun->value.closure.params, exp, fun->value.closure.env) );
   }
   fprintf(default_output_port->value.stream, "cannot expand: "); print_obj(default_output_port, fun); newline(default_output_port);
   return 0;
@@ -430,6 +440,7 @@ static const char * env_src[][2]  = {
                                       (cond ((null? exp)  (quote ()))
                                             ((pair? exp)
                                                   (cond ((eq? (car exp) (quote unquote))  (car (cdr exp)))
+                                                        ((eq? (car exp) (quote unquote-splicing))    (append (car (cdr exp))  (expand-qq (cdr (cdr exp)))))
                                                         ((quote #t)     (cons (expand-qq (car exp)) (expand-qq (cdr exp))))))
                                             ((quote #t)   (cons (quote quote) (cons exp (quote ()) ))))))) exp0 ))))) },
   { "map", LISP((lambda (fn l0)
