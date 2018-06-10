@@ -1,0 +1,8 @@
+(letrec ((f (lambda (n x)
+          (if (= n 0)
+            (car x)
+            (f (- n 1)
+              (cons (cdr x)
+                (+ (car x)
+                  (cdr x))))))) )
+  (f 20 (cons 1 1)))
