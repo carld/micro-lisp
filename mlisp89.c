@@ -297,7 +297,7 @@ Object *fwriteobj(Object *a){  print_obj(default_output_port, car(a)); newline(d
 Object *fputch(Object *a)   {  putchar(car(a)->value.mword); return e_true; }
 Object *fgetch(Object *a)   {  return newchar(getchar()); }
 Object *fformat(Object *a)  {  return format(default_output_port, car(a), cdr(a)); }
-Object *feval(Object *a)    { return eval(car(a), car(cdr(a))); }
+Object *feval(Object *a)    {  return eval(car(a), car(cdr(a))); }
 
 Object *fquote(Object *exp, Object *env){  return car(cdr(exp)); }
 Object *flambda(Object *exp, Object *env){ return newclosure(car(cdr(exp)), car(cdr(cdr(exp))), env); }
@@ -331,11 +331,7 @@ Object *fapply(Object *exp, Object *env) {
 
 Object *fexpand(Object *exp, Object *env) {
   Object *fun = eval(car(car(cdr(exp))), env);
-  if (fun->tag == _Macro) {
-    return expand(fun, cdr(car(cdr(exp))));
-  }
-  err("cannot expand: ", exp);
-  return 0;
+  return expand(fun, cdr(car(cdr(exp))));
 }
 
 Object *fmacro(Object *exp, Object *env) {
@@ -418,16 +414,29 @@ Object * eval(Object *exp, Object *env) {
   return 0;
 }
 
+Object *eval_string(const char *str, Object *env) {
+  Object *port = newport( funopen(&str, freadmem, NULL, NULL, NULL) );
+  lookahead(port);
+  return eval(gettokenobj(port), env);
+}
+
+Object *extend_env(Object *env, const char *src[][2]) {
+  for ( ; (*src)[0] ; src++) {
+    env = cons(cons(intern( (*src)[0] ), cons(eval_string( (*src)[1] , env), 0)), env);
+  }
+  return env;
+}
+
 /* A limitation of the macro stringizing # is being able to use a single quote 'x use (quote x) instead */
 #define LISP(code) #code
-static const char * env_src[][2]  = {
+static const char * builtin_lib[][2]  = {
   { "Y", LISP((lambda (fn)
                       ((lambda (h) (h h))
                         (lambda (g)
                           (fn (lambda args
                               (apply (g g) args))))))) },
-  { "list", LISP((lambda args
-                    args)) },
+  { "null", LISP((quote ()))},
+  { "list", LISP((lambda args args)) },
   { "foldr", LISP((lambda (fn0 acc0 lst0)
                     ((Y (lambda (foldr0)
                         (lambda (acc lst)
@@ -510,19 +519,6 @@ static const char * env_src[][2]  = {
   { 0, 0 }
 };
 
-Object *eval_string(const char *str, Object *env) {
-  Object *port = newport( funopen(&str, freadmem, NULL, NULL, NULL) );
-  lookahead(port);
-  return eval(gettokenobj(port), env);
-}
-
-Object *extend_env(Object *env, const char *src[][2]) {
-  for ( ; (*src)[0] ; src++) {
-    env = cons(cons(intern( (*src)[0] ), cons(eval_string( (*src)[1] , env), 0)), env);
-  }
-  return env;
-}
-
 int main(int argc, char *argv[]) {
   Object *env =
     cons (cons(intern("car"), cons(newprimop(fcar), 0)),
@@ -550,7 +546,7 @@ int main(int argc, char *argv[]) {
     cons (cons(intern("/"), cons(newprimop(fdiv), 0)),
     cons (cons(intern("="), cons(newprimop(fmeq), 0)),
       0))))))))))))))))))))))));
-  env = extend_env(env, env_src);
+  env = extend_env(env, builtin_lib);
   default_input_port = newport(stdin), default_output_port = newport(stdout);
   lookahead(default_input_port);
   print_obj(default_output_port, eval(gettokenobj(default_input_port), env) );
