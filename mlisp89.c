@@ -30,6 +30,7 @@ typedef struct Object {
   } value;
 } Object;
 static Object *default_input_port = 0, *default_output_port = 0, *symbols = 0;
+static mem_use = 0;
 static int look; /* look ahead character */
 #define TOKEN_MAX 32
 static char token[TOKEN_MAX]; /* token */
@@ -91,6 +92,7 @@ void gettoken(Object *port) {
 
 Object * tagalloc(int type) {
   Object *obj = calloc( 1, sizeof (Object) );
+  mem_use += sizeof(Object);
   obj->tag = type;
   return obj;
 }
@@ -283,6 +285,8 @@ Object * map_(Object *list, Object * (*function) (Object *, Object *), Object *c
   }
   return head;
 }
+
+#define evlist(ex,en) map_(ex, eval, en)
 
 Object *fcons(Object *a)    {  return cons(car(a), car(cdr(a)));  }
 Object *fcar(Object *a)     {  return car(car(a));  }
@@ -551,5 +555,6 @@ int main(int argc, char *argv[]) {
   lookahead(default_input_port);
   print_obj(default_output_port, eval(gettokenobj(default_input_port), env) );
   newline(default_output_port);
+  fprintf(stderr, "Memory usage: %d (%ld)\n", mem_use, mem_use / sizeof(Object));
   return 0;
 }
