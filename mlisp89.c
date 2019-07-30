@@ -1,6 +1,12 @@
 /* Micro Scheme (C) A. Carl Douglas */
 #include <stdint.h>
+
+#if defined(BSD)
 #include <stdio.h>
+#else
+#include <bsd/stdio.h>
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #define debug(m,e) fprintf(default_output_port->value.stream, "%s:%d: %s:",__FILE__,__LINE__,m); print_obj(default_output_port, e); fprintf(default_output_port->value.stream, "\n");
