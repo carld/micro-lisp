@@ -70,7 +70,7 @@ check-ok '((curry + 1) 3)' '4'
 check-ok '(let ((zero?  (curry = 0))) (zero? 0))' '#t'
 check-ok '((compose (lambda (x) (+ x 1))  (lambda (x) (* x 2))) 2)' '5'
 check-ok '(let* ((a 1) (b 2)) (+ a b))' '3'
-check-ok '(eval (+ 1 2) (environment))' '3'
+check-ok '(eval '\''(+ 1 2) (environment))' '3'
 check-ok '(eval '\''a '\''((a 5)))' '5'
 check-file-ok examples/assoc.lisp 'lisp'
 check-file-ok examples/apply.lisp '(a b c)'
@@ -97,6 +97,7 @@ check-file-ok examples/format.lisp 'hello 21553 test world
 #t'
 check-file-ok examples/letrec.lisp '(4 3 2 1)'
 check-file-ok examples/expand.lisp '(let ((x (Y (lambda (x) (lambda (y r) (if (= y 0) r (cons y (x (- y 1) r)))))))) (x 4 (quote ())))'
+check-file-ok examples/90-min-example.lisp '10946'
 
 echo "Passed $SUCCESS of $TOTAL"
 
