@@ -11,7 +11,7 @@ micro-lisp: micro-lisp.c
 	$(CC) $(CFLAGS) -o $@ $^
 
 mlisp89: mlisp89.c
-	$(CC) $(CFLAGS) -ansi -std=c89 -D_DEFAULT_SOURCE -o $@ $^
+	$(CC) $(CFLAGS) -ansi -std=c89 -D_DEFAULT_SOURCE -DBSD -o $@ $^
 
 mlisp89-non-bsd: mlisp89.c
 	$(CC) $(CFLAGS) -ansi -lbsd -std=c89 -D_DEFAULT_SOURCE -o mlisp89 $^
