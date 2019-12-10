@@ -99,8 +99,6 @@ check-file-ok examples/letrec.lisp '(4 3 2 1)'
 check-file-ok examples/expand.lisp '(let ((x (Y (lambda (x) (lambda (y r) (if (= y 0) r (cons y (x (- y 1) r)))))))) (x 4 (quote ())))'
 check-file-ok examples/90-min-example.lisp '10946'
 
-echo "Passed $SUCCESS of $TOTAL"
-
 # Meta Circular Interpreter Tests
 
 #check-repl-ok 'hello' 'carl'
@@ -117,5 +115,6 @@ echo "Passed $SUCCESS of $TOTAL"
 #check-repl-file-ok examples/lambda-logic.lisp '(true false true false)'
 #check-repl-file-ok examples/ycomb.lisp '(1 2 3)'
 
-#echo "Passed $SUCCESS of $TOTAL"
+echo "Passed $SUCCESS of $TOTAL"
 
+exit $(( $TOTAL - $SUCCESS ))
